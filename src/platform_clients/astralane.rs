@@ -38,7 +38,8 @@ pub struct Astralane {
 }
 
 impl Astralane {
-    const MIN_TIP_AMOUNT: u64 = 100_000;
+    const MIN_TIP_AMOUNT_TX: u64 = 0_000_010_000;      // 单笔交易最低 tip
+    const MIN_TIP_AMOUNT_BUNDLE: u64 = 0_003_000_000;  // 批量交易最低 tip
 
     pub fn new() -> Self {
         let region = *crate::constants::REGION;
@@ -75,7 +76,7 @@ impl crate::platform_clients::SendTx for Astralane {
             .http_client
             .post(&self.endpoint)
             .header("Content-Type", "application/json")
-            .header("x-api-key", self.auth_token.as_str())
+            .header("api-key", self.auth_token.as_str())
             .json(&json!({
                 "transaction": encode_txs,
                 "mode": "fast"
@@ -97,8 +98,44 @@ impl crate::platform_clients::SendTx for Astralane {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendBundle for Astralane {
-    async fn send_bundle(&self, _txs: &[Transaction]) -> Option<Vec<Signature>> {
-        None // 暂不支持批量
+    async fn send_bundle(&self, txs: &[Transaction]) -> Option<Vec<Signature>> {
+        if txs.is_empty() {
+            log::warn!("Empty transaction bundle provided");
+            return None;
+        }
+
+        // 序列化所有交易
+        let encoded_txs: Vec<String> = txs
+            .iter()
+            .map(|tx| base64::prelude::BASE64_STANDARD.encode(&bincode::serialize(tx).unwrap()))
+            .collect();
+
+        let response = match self
+            .http_client
+            .post(&self.endpoint)
+            .header("Content-Type", "application/json")
+            .header("api-key", self.auth_token.as_str())
+            .json(&json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "sendBundle",
+                "params": [encoded_txs],
+            }))
+            .send()
+            .await
+        {
+            Ok(res) => res.text().await.unwrap(),
+            Err(e) => {
+                println!("错误: {}", e);
+                log::error!("send bundle error: {:?}", e);
+                return None;
+            }
+        };
+        
+        log::info!("astralane bundle response: {:?}", response);
+        
+        // 返回所有交易的签名
+        Some(txs.iter().map(|tx| tx.signatures[0]).collect())
     }
 }
 
@@ -133,7 +170,7 @@ impl crate::platform_clients::BuildTx for Astralane {
         }
         // tip
         let tip_address = self.get_tip_address();
-        let tip_amt = tip.unwrap_or(Self::MIN_TIP_AMOUNT);
+        let tip_amt = tip.unwrap_or(Self::MIN_TIP_AMOUNT_TX);
         let tip_ix = transfer(&signer.pubkey(), &tip_address, tip_amt);
         instructions.push(tip_ix);
         instructions.append(&mut ixs);

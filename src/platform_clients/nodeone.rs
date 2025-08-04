@@ -43,7 +43,8 @@ pub struct NodeOne {
 }
 
 impl NodeOne {
-    const MIN_TIP_AMOUNT: u64 = 2_000_000;
+    const MIN_TIP_AMOUNT_TX: u64 = 2_000_000;      // 单笔交易最低 tip
+    const MIN_TIP_AMOUNT_BUNDLE: u64 = 2_000_000;  // 批量交易最低 tip
 
     pub fn get_endpoint() -> String {
         match *REGION {
@@ -166,7 +167,7 @@ impl crate::platform_clients::BuildTx for NodeOne {
         }
         // tip（必须在cu之前）
         let tip_address = Self::get_tip_address();
-        let tip_amt = tip.unwrap_or(Self::MIN_TIP_AMOUNT);
+        let tip_amt = tip.unwrap_or(Self::MIN_TIP_AMOUNT_TX);
         let tip_ix = transfer(&signer.pubkey(), &tip_address, tip_amt);
         instructions.push(tip_ix);
         // cu

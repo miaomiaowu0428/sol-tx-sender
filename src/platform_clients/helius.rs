@@ -51,7 +51,8 @@ pub struct Helius {
 }
 
 impl Helius {
-    const MIN_TIP_AMOUNT: u64 = 1_000_000;
+    const MIN_TIP_AMOUNT_TX: u64 = 1_000_000;      // 单笔交易最低 tip  
+    const MIN_TIP_AMOUNT_BUNDLE: u64 = 1_000_000;  // 批量交易最低 tip
 
     pub fn new() -> Self {
         let region = *crate::constants::REGION;
@@ -156,7 +157,7 @@ impl crate::platform_clients::BuildTx for Helius {
         }
         // tip
         let tip_address = self.get_tip_address();
-        let tip_amt = tip.unwrap_or(Self::MIN_TIP_AMOUNT);
+        let tip_amt = tip.unwrap_or(Self::MIN_TIP_AMOUNT_TX);
         let tip_ix = transfer(&signer.pubkey(), &tip_address, tip_amt);
         instructions.push(tip_ix);
         instructions.append(&mut ixs);
