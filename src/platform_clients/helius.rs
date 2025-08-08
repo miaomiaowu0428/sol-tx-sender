@@ -17,7 +17,7 @@ use solana_sdk::{
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::HTTP_CLIENT;
-use crate::platform_clients::Region;
+use crate::platform_clients::{NonceParam, Region};
 
 // helius 小费地址
 pub const HELIUS_TIP_ACCOUNTS: &[Pubkey] = &[
@@ -132,7 +132,7 @@ impl crate::platform_clients::BuildTx for Helius {
         ixs: &[Instruction],
         signer: &Arc<Keypair>,
         tip: &Option<u64>,
-        nonce: crate::platform_clients::NonceParam,
+        nonce: &NonceParam,
         cu: &Option<(u32, u64)>,
     ) -> crate::platform_clients::TxEnvelope<'a, Helius> {
         let mut instructions = Vec::new();

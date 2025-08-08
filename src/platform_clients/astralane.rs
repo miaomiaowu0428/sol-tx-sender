@@ -1,5 +1,5 @@
 use crate::constants::HTTP_CLIENT;
-use crate::platform_clients::Region;
+use crate::platform_clients::{NonceParam, Region};
 use base64::Engine;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
@@ -145,7 +145,7 @@ impl crate::platform_clients::BuildTx for Astralane {
         ixs: &[Instruction],
         signer: &Arc<Keypair>,
         tip: &Option<u64>,
-        nonce: crate::platform_clients::NonceParam,
+        nonce: &NonceParam,
         cu: &Option<(u32, u64)>,
     ) -> crate::platform_clients::TxEnvelope<'a, Astralane> {
         let mut instructions = Vec::new();

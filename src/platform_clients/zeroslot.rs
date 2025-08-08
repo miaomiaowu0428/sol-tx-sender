@@ -17,7 +17,7 @@ use solana_sdk::{
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::Region;
+use crate::platform_clients::{NonceParam, Region};
 
 pub const ZEROSLOT_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("6fQaVhYZA4w3MBSXjJ81Vf6W1EDYeUPXpgVQ6UQyU1Av"),
@@ -159,7 +159,7 @@ impl crate::platform_clients::BuildTx for ZeroSlot {
         ixs: &[Instruction],
         signer: &Arc<Keypair>,
         tip: &Option<u64>,
-        nonce: crate::platform_clients::NonceParam,
+        nonce: &NonceParam,
         cu: &Option<(u32, u64)>,
     ) -> crate::platform_clients::TxEnvelope<'a, ZeroSlot> {
         let mut instructions = Vec::new();

@@ -53,7 +53,7 @@ pub trait BuildTx {
         ixs: &[Instruction],
         signer: &Arc<Keypair>,
         tip: &Option<u64>,
-        nonce: crate::platform_clients::NonceParam,
+        nonce: &NonceParam,
         cu: &Option<(u32, u64)>,
     ) -> TxEnvelope<'a, Self>
     where

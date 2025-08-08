@@ -135,7 +135,7 @@ impl BuildTx for Blockrazor {
         ixs: &[Instruction],
         signer: &Arc<Keypair>,
         tip: &Option<u64>,
-        nonce: crate::platform_clients::NonceParam,
+        nonce: &NonceParam,
         cu: &Option<(u32, u64)>,
     ) -> crate::platform_clients::TxEnvelope<'a, Blockrazor> {
         let mut instructions = Vec::new();

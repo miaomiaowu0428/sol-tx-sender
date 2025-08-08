@@ -16,7 +16,7 @@ use solana_sdk::{
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
-use crate::constants::HTTP_CLIENT;
+use crate::{constants::HTTP_CLIENT, platform_clients::NonceParam};
 use crate::platform_clients::Region;
 
 pub const JITO_TIP_ACCOUNTS: &[Pubkey] = &[
@@ -166,7 +166,7 @@ impl crate::platform_clients::BuildTx for Jito {
         ixs: &[Instruction],
         signer: &Arc<Keypair>,
         tip: &Option<u64>,
-        nonce: crate::platform_clients::NonceParam,
+        nonce: &NonceParam,
         cu: &Option<(u32, u64)>,
     ) -> crate::platform_clients::TxEnvelope<'a, Jito> {
         let mut instructions = Vec::new();

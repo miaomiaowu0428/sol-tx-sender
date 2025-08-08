@@ -18,7 +18,7 @@ use solana_sdk::{
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::Region;
+use crate::platform_clients::{NonceParam, Region};
 
 pub const NODEONE_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("node1PqAa3BWWzUnTHVbw8NJHC874zn9ngAkXjgWEej"),
@@ -150,7 +150,7 @@ impl crate::platform_clients::BuildTx for NodeOne {
         ixs: &[Instruction],
         signer: &Arc<Keypair>,
         tip: &Option<u64>,
-        nonce: crate::platform_clients::NonceParam,
+        nonce: &NonceParam,
         cu: &Option<(u32, u64)>,
     ) -> crate::platform_clients::TxEnvelope<'a, NodeOne> {
         let mut instructions = Vec::new();
