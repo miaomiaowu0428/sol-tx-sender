@@ -39,7 +39,7 @@ pub trait SendBundle: Sync + Send {
 pub trait BuildTx {
     fn build_tx<'a>(
         &'a self,
-        ixs: &Vec<Instruction>,
+        ixs: &[Instruction],
         signer: &Arc<Keypair>,
         tip: Option<u64>,
         nonce: Option<NonceParam>,
@@ -52,7 +52,7 @@ pub trait BuildTx {
 
 // 批量交易组装 trait
 pub trait BuildBundle {
-    fn build_bundle<'a>(&'a self, txs: Vec<Transaction>) -> BundleEnvelope<'a, Self>
+    fn build_bundle<'a>(&'a self, txs: &[Transaction]) -> BundleEnvelope<'a, Self>
     where
         Self: SendBundle + Sync + Send + Sized;
 }

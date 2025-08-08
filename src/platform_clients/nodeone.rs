@@ -43,8 +43,8 @@ pub struct NodeOne {
 }
 
 impl NodeOne {
-    const MIN_TIP_AMOUNT_TX: u64 = 2_000_000;      // 单笔交易最低 tip
-    const MIN_TIP_AMOUNT_BUNDLE: u64 = 2_000_000;  // 批量交易最低 tip
+    const MIN_TIP_AMOUNT_TX: u64 = 2_000_000; // 单笔交易最低 tip
+    const MIN_TIP_AMOUNT_BUNDLE: u64 = 2_000_000; // 批量交易最低 tip
 
     pub fn get_endpoint() -> String {
         match *REGION {
@@ -147,7 +147,7 @@ impl crate::platform_clients::SendBundle for NodeOne {
 impl crate::platform_clients::BuildTx for NodeOne {
     fn build_tx<'a>(
         &'a self,
-        ixs: &Vec<Instruction>,
+        ixs: &[Instruction],
         signer: &Arc<Keypair>,
         tip: Option<u64>,
         nonce: Option<crate::platform_clients::NonceParam>,
@@ -178,7 +178,7 @@ impl crate::platform_clients::BuildTx for NodeOne {
             let price_instruction = ComputeBudgetInstruction::set_compute_unit_price(cu_price);
             instructions.push(price_instruction);
         }
-        instructions.extend(ixs.clone());
+        instructions.extend(ixs.iter().cloned());
         let tx = Transaction::new_signed_with_payer(
             &instructions,
             Some(&signer.pubkey()),
@@ -192,8 +192,11 @@ impl crate::platform_clients::BuildTx for NodeOne {
 impl crate::platform_clients::BuildBundle for NodeOne {
     fn build_bundle<'a>(
         &'a self,
-        txs: Vec<Transaction>,
+        txs: &[Transaction],
     ) -> crate::platform_clients::BundleEnvelope<'a, NodeOne> {
-        crate::platform_clients::BundleEnvelope { txs, sender: self }
+        crate::platform_clients::BundleEnvelope {
+            txs: txs.to_vec(),
+            sender: self,
+        }
     }
 }

@@ -46,8 +46,8 @@ pub struct Jito {
 }
 
 impl Jito {
-    const MIN_TIP_AMOUNT_TX: u64 = 1_000;       // 单笔交易最低 tip
-    const MIN_TIP_AMOUNT_BUNDLE: u64 = 10_000;  // 批量交易最低 tip
+    const MIN_TIP_AMOUNT_TX: u64 = 1_000; // 单笔交易最低 tip
+    const MIN_TIP_AMOUNT_BUNDLE: u64 = 10_000; // 批量交易最低 tip
 
     pub fn new() -> Self {
         let region = *crate::constants::REGION;
@@ -163,7 +163,7 @@ impl crate::platform_clients::SendBundle for Jito {
 impl crate::platform_clients::BuildTx for Jito {
     fn build_tx<'a>(
         &'a self,
-        ixs: &Vec<Instruction>,
+        ixs: &[Instruction],
         signer: &Arc<Keypair>,
         tip: Option<u64>,
         nonce: Option<crate::platform_clients::NonceParam>,
@@ -194,7 +194,7 @@ impl crate::platform_clients::BuildTx for Jito {
         let tip_amt = tip.unwrap_or(Self::MIN_TIP_AMOUNT_TX);
         let tip_ix = transfer(&signer.pubkey(), &tip_address, tip_amt);
         instructions.push(tip_ix);
-        instructions.extend(ixs.clone());
+        instructions.extend(ixs.iter().cloned());
         let tx = Transaction::new_signed_with_payer(
             &instructions,
             Some(&signer.pubkey()),
@@ -208,9 +208,12 @@ impl crate::platform_clients::BuildTx for Jito {
 impl crate::platform_clients::BuildBundle for Jito {
     fn build_bundle<'a>(
         &'a self,
-        txs: Vec<Transaction>,
+        txs: &[Transaction],
     ) -> crate::platform_clients::BundleEnvelope<'a, Jito> {
-        crate::platform_clients::BundleEnvelope { txs, sender: self }
+        crate::platform_clients::BundleEnvelope {
+            txs: txs.to_vec(),
+            sender: self,
+        }
     }
 }
 

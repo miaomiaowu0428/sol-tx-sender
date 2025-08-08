@@ -38,8 +38,8 @@ pub struct Astralane {
 }
 
 impl Astralane {
-    const MIN_TIP_AMOUNT_TX: u64 = 0_000_010_000;      // 单笔交易最低 tip
-    const MIN_TIP_AMOUNT_BUNDLE: u64 = 0_003_000_000;  // 批量交易最低 tip
+    const MIN_TIP_AMOUNT_TX: u64 = 0_000_010_000; // 单笔交易最低 tip
+    const MIN_TIP_AMOUNT_BUNDLE: u64 = 0_003_000_000; // 批量交易最低 tip
 
     pub fn new() -> Self {
         let region = *crate::constants::REGION;
@@ -131,9 +131,9 @@ impl crate::platform_clients::SendBundle for Astralane {
                 return None;
             }
         };
-        
+
         log::info!("astralane bundle response: {:?}", response);
-        
+
         // 返回所有交易的签名
         Some(txs.iter().map(|tx| tx.signatures[0]).collect())
     }
@@ -142,7 +142,7 @@ impl crate::platform_clients::SendBundle for Astralane {
 impl crate::platform_clients::BuildTx for Astralane {
     fn build_tx<'a>(
         &'a self,
-        ixs: &Vec<Instruction>,
+        ixs: &[Instruction],
         signer: &Arc<Keypair>,
         tip: Option<u64>,
         nonce: Option<crate::platform_clients::NonceParam>,
@@ -173,7 +173,7 @@ impl crate::platform_clients::BuildTx for Astralane {
         let tip_amt = tip.unwrap_or(Self::MIN_TIP_AMOUNT_TX);
         let tip_ix = transfer(&signer.pubkey(), &tip_address, tip_amt);
         instructions.push(tip_ix);
-        instructions.extend(ixs.clone());
+        instructions.extend(ixs.iter().cloned());
         let tx = Transaction::new_signed_with_payer(
             &instructions,
             Some(&signer.pubkey()),
@@ -187,9 +187,12 @@ impl crate::platform_clients::BuildTx for Astralane {
 impl crate::platform_clients::BuildBundle for Astralane {
     fn build_bundle<'a>(
         &'a self,
-        txs: Vec<Transaction>,
+        txs: &[Transaction],
     ) -> crate::platform_clients::BundleEnvelope<'a, Astralane> {
-        crate::platform_clients::BundleEnvelope { txs, sender: self }
+        crate::platform_clients::BundleEnvelope {
+            txs: txs.to_vec(),
+            sender: self,
+        }
     }
 }
 
