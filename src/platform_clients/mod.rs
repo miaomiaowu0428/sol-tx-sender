@@ -80,7 +80,7 @@ impl<'a, T: SendTx + Sync + Send + 'a> TxEnvelope<'a, T> {
 }
 
 #[async_trait::async_trait]
-pub trait TxSend {
+pub trait TxSend: Send + Sync {
     async fn send(&self) -> Option<Signature>;
 }
 
