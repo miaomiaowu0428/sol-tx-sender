@@ -72,8 +72,9 @@ impl Temporal {
         }
     }
 
-    pub fn new(token: String) -> Self {
+    pub fn new() -> Self {
         let endpoint = Self::get_endpoint();
+        let token = std::env::var("TEMPORAL_KEY").unwrap_or_default();
         let http_client = HTTP_CLIENT.clone();
         Temporal {
             endpoint,

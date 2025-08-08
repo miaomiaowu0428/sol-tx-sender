@@ -55,7 +55,7 @@ impl NodeOne {
         }
     }
 
-    pub fn new(auth_token: String) -> Self {
+    pub fn new() -> Self {
         let region = *crate::constants::REGION;
         let endpoint = match region {
             Region::NewYork => NODEONE_ENDPOINT[0].to_string(),
@@ -63,6 +63,7 @@ impl NodeOne {
             Region::Frankfurt => NODEONE_ENDPOINT[2].to_string(),
             _ => NODEONE_ENDPOINT[0].to_string(),
         };
+        let auth_token = std::env::var("NODEONE_KEY").unwrap_or_default();
         let http_client = HTTP_CLIENT.clone();
         NodeOne {
             endpoint,

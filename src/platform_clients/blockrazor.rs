@@ -89,7 +89,7 @@ fn read_region_from_env() -> Region {
     Region::Frankfurt
 }
 fn read_auth_token_from_env() -> String {
-    String::new()
+    std::env::var("BLOCKRAZOR_KEY").unwrap_or_default()
 }
 
 // 新模式实现

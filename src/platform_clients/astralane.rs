@@ -51,7 +51,7 @@ impl Astralane {
             Region::Amsterdam => ASTRALANE_ENDPOINTS[4].to_string(),
             _ => ASTRALANE_ENDPOINTS[0].to_string(),
         };
-        let auth_token = std::env::var("ASTRALANE_AUTH_TOKEN").unwrap_or_default();
+        let auth_token = std::env::var("ASTRALANE_KEY").unwrap_or_default();
         let http_client = HTTP_CLIENT.clone();
         Astralane {
             endpoint,

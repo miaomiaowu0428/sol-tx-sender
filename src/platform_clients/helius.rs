@@ -66,7 +66,7 @@ impl Helius {
             Region::Singapore => HELIUS_ENDPOINT[6].to_string(),
             _ => HELIUS_ENDPOINT[0].to_string(),
         };
-        let auth_token = std::env::var("HELIUS_AUTH_TOKEN").unwrap_or_default();
+        let auth_token = std::env::var("HELIUS_KEY").unwrap_or_default();
         let http_client = HTTP_CLIENT.clone();
         Helius {
             endpoint,

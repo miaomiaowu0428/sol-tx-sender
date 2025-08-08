@@ -62,7 +62,7 @@ impl ZeroSlot {
         }
     }
 
-    pub fn new(token: String) -> Self {
+    pub fn new() -> Self {
         let region = *crate::constants::REGION;
         let endpoint = match region {
             Region::NewYork => ZEROSLOT_ENDPOINT[0].to_string(),
@@ -72,6 +72,7 @@ impl ZeroSlot {
             Region::LosAngeles => ZEROSLOT_ENDPOINT[4].to_string(),
             _ => ZEROSLOT_ENDPOINT[0].to_string(),
         };
+        let token = std::env::var("ZEROSLOT_KEY").unwrap_or_default();
         let http_client = HTTP_CLIENT.clone();
         ZeroSlot {
             endpoint,
