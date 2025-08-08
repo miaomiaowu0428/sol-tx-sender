@@ -158,22 +158,21 @@ impl crate::platform_clients::BuildTx for ZeroSlot {
         &'a self,
         ixs: &[Instruction],
         signer: &Arc<Keypair>,
-        tip: Option<u64>,
-        nonce: Option<crate::platform_clients::NonceParam>,
-        cu: Option<(u32, u64)>,
-        hash: Hash,
+        tip: &Option<u64>,
+        nonce: crate::platform_clients::NonceParam,
+        cu: &Option<(u32, u64)>,
     ) -> crate::platform_clients::TxEnvelope<'a, ZeroSlot> {
         let mut instructions = Vec::new();
         // nonce 指令
-        if let Some(nonce_param) = nonce {
-            match nonce_param {
-                crate::platform_clients::NonceParam::Blockhash(_) => {}
-                crate::platform_clients::NonceParam::NonceAccount { account, authority } => {
-                    let nonce_ix =
-                        solana_sdk::system_instruction::advance_nonce_account(&account, &authority);
-                    instructions.push(nonce_ix);
-                }
-            }
+        if let crate::platform_clients::NonceParam::NonceAccount {
+            account,
+            authority,
+            ..
+        } = nonce
+        {
+            let nonce_ix =
+                solana_sdk::system_instruction::advance_nonce_account(&account, &authority);
+            instructions.push(nonce_ix);
         }
         // tip（必须在cu之前）
         let tip_address = Self::get_tip_address();
@@ -182,9 +181,9 @@ impl crate::platform_clients::BuildTx for ZeroSlot {
         instructions.push(tip_ix);
         // cu
         if let Some((cu_limit, cu_price)) = cu {
-            let limit_instruction = ComputeBudgetInstruction::set_compute_unit_limit(cu_limit);
+            let limit_instruction = ComputeBudgetInstruction::set_compute_unit_limit(*cu_limit);
             instructions.push(limit_instruction);
-            let price_instruction = ComputeBudgetInstruction::set_compute_unit_price(cu_price);
+            let price_instruction = ComputeBudgetInstruction::set_compute_unit_price(*cu_price);
             instructions.push(price_instruction);
         }
         instructions.extend(ixs.iter().cloned());
@@ -192,7 +191,7 @@ impl crate::platform_clients::BuildTx for ZeroSlot {
             &instructions,
             Some(&signer.pubkey()),
             &[signer],
-            hash,
+            *nonce.hash(),
         );
         crate::platform_clients::TxEnvelope { tx, sender: self }
     }

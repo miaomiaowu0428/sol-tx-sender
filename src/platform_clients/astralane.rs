@@ -144,28 +144,27 @@ impl crate::platform_clients::BuildTx for Astralane {
         &'a self,
         ixs: &[Instruction],
         signer: &Arc<Keypair>,
-        tip: Option<u64>,
-        nonce: Option<crate::platform_clients::NonceParam>,
-        cu: Option<(u32, u64)>,
-        hash: Hash,
+        tip: &Option<u64>,
+        nonce: crate::platform_clients::NonceParam,
+        cu: &Option<(u32, u64)>,
     ) -> crate::platform_clients::TxEnvelope<'a, Astralane> {
         let mut instructions = Vec::new();
         // nonce 指令
-        if let Some(nonce_param) = nonce {
-            match nonce_param {
-                crate::platform_clients::NonceParam::Blockhash(_) => {}
-                crate::platform_clients::NonceParam::NonceAccount { account, authority } => {
-                    let nonce_ix =
-                        solana_sdk::system_instruction::advance_nonce_account(&account, &authority);
-                    instructions.push(nonce_ix);
-                }
-            }
+        if let crate::platform_clients::NonceParam::NonceAccount {
+            account,
+            authority,
+            ..
+        } = nonce
+        {
+            let nonce_ix =
+                solana_sdk::system_instruction::advance_nonce_account(&account, &authority);
+            instructions.push(nonce_ix);
         }
         // cu（必须在tip之前）
         if let Some((cu_limit, cu_price)) = cu {
-            let limit_instruction = ComputeBudgetInstruction::set_compute_unit_limit(cu_limit);
+            let limit_instruction = ComputeBudgetInstruction::set_compute_unit_limit(*cu_limit);
             instructions.push(limit_instruction);
-            let price_instruction = ComputeBudgetInstruction::set_compute_unit_price(cu_price);
+            let price_instruction = ComputeBudgetInstruction::set_compute_unit_price(*cu_price);
             instructions.push(price_instruction);
         }
         // tip
@@ -178,7 +177,7 @@ impl crate::platform_clients::BuildTx for Astralane {
             &instructions,
             Some(&signer.pubkey()),
             &[signer],
-            hash,
+            *nonce.hash(),
         );
         crate::platform_clients::TxEnvelope { tx, sender: self }
     }

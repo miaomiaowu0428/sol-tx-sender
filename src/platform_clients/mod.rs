@@ -20,9 +20,16 @@ pub mod zeroslot;
 // 交易组装 trait
 pub enum NonceParam {
     Blockhash(Hash),
-    NonceAccount { account: Pubkey, authority: Pubkey },
+    NonceAccount { account: Pubkey, authority: Pubkey,hash: Hash },
 }
-
+impl NonceParam {
+    fn hash(&self) -> &Hash {
+        match self {
+            NonceParam::Blockhash(hash) => hash,
+            NonceParam::NonceAccount { hash, .. } => hash,
+        }
+    }
+}
 // 单笔交易发送 trait
 #[async_trait::async_trait]
 pub trait SendTx: Sync + Send {
@@ -41,10 +48,9 @@ pub trait BuildTx {
         &'a self,
         ixs: &[Instruction],
         signer: &Arc<Keypair>,
-        tip: Option<u64>,
-        nonce: Option<NonceParam>,
-        cu: Option<(u32, u64)>,
-        hash: Hash,
+        tip: &Option<u64>,
+        nonce: crate::platform_clients::NonceParam,
+        cu: &Option<(u32, u64)>,
     ) -> TxEnvelope<'a, Self>
     where
         Self: SendTx + Sync + Send + Sized;
