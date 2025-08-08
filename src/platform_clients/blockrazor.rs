@@ -132,7 +132,7 @@ impl SendBundle for Blockrazor {
 impl BuildTx for Blockrazor {
     fn build_tx<'a>(
         &'a self,
-        ixs: Vec<Instruction>,
+        ixs: &Vec<Instruction>,
         signer: &Arc<Keypair>,
         tip: Option<u64>,
         nonce: Option<NonceParam>,
@@ -163,7 +163,7 @@ impl BuildTx for Blockrazor {
         let tip_amt = tip.unwrap_or(Self::MIN_TIP_AMOUNT_TX);
         let tip_ix = transfer(&signer.pubkey(), &tip_address, tip_amt);
         instructions.push(tip_ix);
-        instructions.extend(ixs);
+        instructions.extend(ixs.clone());
         let tx = Transaction::new_signed_with_payer(
             &instructions,
             Some(&signer.pubkey()),

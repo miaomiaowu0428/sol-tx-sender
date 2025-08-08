@@ -39,7 +39,7 @@ pub trait SendBundle: Sync + Send {
 pub trait BuildTx {
     fn build_tx<'a>(
         &'a self,
-        ixs: Vec<Instruction>,
+        ixs: &Vec<Instruction>,
         signer: &Arc<Keypair>,
         tip: Option<u64>,
         nonce: Option<NonceParam>,

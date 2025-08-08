@@ -155,7 +155,7 @@ impl crate::platform_clients::SendBundle for ZeroSlot {
 impl crate::platform_clients::BuildTx for ZeroSlot {
     fn build_tx<'a>(
         &'a self,
-        ixs: Vec<Instruction>,
+        ixs: &Vec<Instruction>,
         signer: &Arc<Keypair>,
         tip: Option<u64>,
         nonce: Option<crate::platform_clients::NonceParam>,
@@ -186,7 +186,7 @@ impl crate::platform_clients::BuildTx for ZeroSlot {
             let price_instruction = ComputeBudgetInstruction::set_compute_unit_price(cu_price);
             instructions.push(price_instruction);
         }
-        instructions.extend(ixs);
+        instructions.extend(ixs.clone());
         let tx = Transaction::new_signed_with_payer(
             &instructions,
             Some(&signer.pubkey()),
