@@ -163,7 +163,7 @@ impl crate::platform_clients::SendBundle for Jito {
 impl crate::platform_clients::BuildTx for Jito {
     fn build_tx<'a>(
         &'a self,
-        mut ixs: Vec<Instruction>,
+        ixs: Vec<Instruction>,
         signer: &Arc<Keypair>,
         tip: Option<u64>,
         nonce: Option<crate::platform_clients::NonceParam>,
@@ -194,7 +194,7 @@ impl crate::platform_clients::BuildTx for Jito {
         let tip_amt = tip.unwrap_or(Self::MIN_TIP_AMOUNT_TX);
         let tip_ix = transfer(&signer.pubkey(), &tip_address, tip_amt);
         instructions.push(tip_ix);
-        instructions.append(&mut ixs);
+        instructions.extend(ixs);
         let tx = Transaction::new_signed_with_payer(
             &instructions,
             Some(&signer.pubkey()),
