@@ -20,7 +20,11 @@ pub mod zeroslot;
 // 交易组装 trait
 pub enum NonceParam {
     Blockhash(Hash),
-    NonceAccount { account: Pubkey, authority: Pubkey,hash: Hash },
+    NonceAccount {
+        account: Pubkey,
+        authority: Pubkey,
+        hash: Hash,
+    },
 }
 impl NonceParam {
     fn hash(&self) -> &Hash {
