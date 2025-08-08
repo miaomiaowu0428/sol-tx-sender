@@ -82,7 +82,7 @@ impl<'a, T: SendTx + Sync + Send + 'a> TxEnvelope<'a, T> {
 #[async_trait::async_trait]
 pub trait TxSend: Send + Sync {
     async fn send(&self) -> Option<Signature>;
-    async fn sig(&self) -> Signature;
+    fn sig(&self) -> Signature;
 }
 
 #[async_trait::async_trait]
@@ -90,7 +90,7 @@ impl<'a, T: SendTx + Sync + Send + 'a> TxSend for TxEnvelope<'a, T> {
     async fn send(&self) -> Option<Signature> {
         self.sender.send_tx(&self.tx).await
     }
-    async fn sig(&self) -> Signature {
+    fn sig(&self) -> Signature {
         self.tx.signatures[0]
     }
 }
