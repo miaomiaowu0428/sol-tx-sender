@@ -154,47 +154,18 @@ impl crate::platform_clients::SendBundle for ZeroSlot {
 }
 
 impl crate::platform_clients::BuildTx for ZeroSlot {
-    fn build_tx<'a>(
-        &'a self,
-        ixs: &[Instruction],
-        signer: &Arc<Keypair>,
-        tip: &Option<u64>,
-        nonce: &NonceParam,
-        cu: &Option<(u32, u64)>,
-    ) -> crate::platform_clients::TxEnvelope<'a, ZeroSlot> {
-        let mut instructions = Vec::new();
-        // nonce 指令
-        if let crate::platform_clients::NonceParam::NonceAccount {
-            account,
-            authority,
-            ..
-        } = nonce
-        {
-            let nonce_ix =
-                solana_sdk::system_instruction::advance_nonce_account(&account, &authority);
-            instructions.push(nonce_ix);
-        }
-        // tip（必须在cu之前）
-        let tip_address = Self::get_tip_address();
-        let tip_amt = tip.unwrap_or(Self::MIN_TIP_AMOUNT_TX);
-        let tip_ix = transfer(&signer.pubkey(), &tip_address, tip_amt);
-        instructions.push(tip_ix);
-        // cu
-        if let Some((cu_limit, cu_price)) = cu {
-            let limit_instruction = ComputeBudgetInstruction::set_compute_unit_limit(*cu_limit);
-            instructions.push(limit_instruction);
-            let price_instruction = ComputeBudgetInstruction::set_compute_unit_price(*cu_price);
-            instructions.push(price_instruction);
-        }
-        instructions.extend(ixs.iter().cloned());
-        let tx = Transaction::new_signed_with_payer(
-            &instructions,
-            Some(&signer.pubkey()),
-            &[signer],
-            *nonce.hash(),
-        );
-        crate::platform_clients::TxEnvelope { tx, sender: self }
+    fn get_tip_address(&self) -> Pubkey {
+        *ZEROSLOT_TIP_ACCOUNTS
+            .choose(&mut rand::rng())
+            .or_else(|| ZEROSLOT_TIP_ACCOUNTS.first())
+            .unwrap()
     }
+    
+    fn get_min_tip_amount(&self) -> u64 {
+        Self::MIN_TIP_AMOUNT_TX
+    }
+    
+    // 使用默认实现，无需重写 build_tx
 }
 
 impl crate::platform_clients::BuildBundle for ZeroSlot {

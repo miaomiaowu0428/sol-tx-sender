@@ -6,6 +6,7 @@ use solana_sdk::hash::Hash;
 use solana_sdk::instruction::Instruction;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::{Keypair, Signature};
+use solana_sdk::signer::Signer;
 use solana_sdk::transaction::Transaction;
 
 use crate::constants::{HTTP_CLIENT, endpoint_config::*};
@@ -48,6 +49,11 @@ pub trait SendBundle: Sync + Send {
 
 // 单笔交易组装 trait
 pub trait BuildTx {
+    // 需要各平台实现的方法
+    fn get_tip_address(&self) -> Pubkey;
+    fn get_min_tip_amount(&self) -> u64;
+
+    // 默认实现
     fn build_tx<'a>(
         &'a self,
         ixs: &[Instruction],
@@ -57,7 +63,45 @@ pub trait BuildTx {
         cu: &Option<(u32, u64)>,
     ) -> TxEnvelope<'a, Self>
     where
-        Self: SendTx + Sync + Send + Sized;
+        Self: SendTx + Sync + Send + Sized,
+    {
+        let mut instructions = Vec::new();
+        
+        // nonce 指令
+        match nonce {
+            NonceParam::Blockhash(_) => {}
+            NonceParam::NonceAccount { account, authority, .. } => {
+                let nonce_ix = solana_sdk::system_instruction::advance_nonce_account(account, authority);
+                instructions.push(nonce_ix);
+            }
+        }
+        
+        // cu 指令（某些平台要求在 tip 之前）
+        if let Some((cu_limit, cu_price)) = cu {
+            let limit_instruction = solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(*cu_limit);
+            instructions.push(limit_instruction);
+            let price_instruction = solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(*cu_price);
+            instructions.push(price_instruction);
+        }
+        
+        // tip 转账
+        let tip_address = self.get_tip_address();
+        let tip_amt = tip.unwrap_or(self.get_min_tip_amount());
+        let tip_ix = solana_sdk::system_instruction::transfer(&signer.pubkey(), &tip_address, tip_amt);
+        instructions.push(tip_ix);
+        
+        // 用户指令
+        instructions.extend(ixs.iter().cloned());
+        
+        let tx = Transaction::new_signed_with_payer(
+            &instructions,
+            Some(&signer.pubkey()),
+            &[signer],
+            *nonce.hash(),
+        );
+        
+        TxEnvelope { tx, sender: self }
+    }
 }
 
 // 批量交易组装 trait
