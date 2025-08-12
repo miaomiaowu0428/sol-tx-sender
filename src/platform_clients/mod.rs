@@ -82,8 +82,7 @@ pub trait BuildTx {
             instructions.push(limit_instruction);
             let price_instruction = solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(*cu_price);
             instructions.push(price_instruction);
-        }
-        
+        }        
         // tip 转账
         let tip_address = self.get_tip_address();
         let tip_amt = tip.unwrap_or(self.get_min_tip_amount());

@@ -65,3 +65,61 @@ pub static PAYER: LazyLock<Arc<Keypair>> = LazyLock::new(|| {
     log::info!("Using wallet : {}", keypair.pubkey());
     Arc::new(keypair)
 });
+
+/// 异步端点保活功能 - 定期ping所有MEV平台端点
+pub async fn endpoint_keep_alive() {
+    endpoint_keep_alive_with_interval(60).await;
+}
+
+/// 带自定义间隔的异步端点保活功能
+pub async fn endpoint_keep_alive_with_interval(interval_secs: u64) {
+    let client = HTTP_CLIENT.clone();
+
+    let urls = vec![
+        ("Astralane", endpoint_config::ASTRALANE_URL.as_str()),
+        ("Blockrazor", endpoint_config::BLOCKRAZOR_URL.as_str()),
+        ("Helius", endpoint_config::HELIUS_URL.as_str()),
+        ("Jito", endpoint_config::JITO_URL.as_str()),
+        ("NodeOne", endpoint_config::NODEONE_URL.as_str()),
+        ("Temporal", endpoint_config::TEMPORAL_URL.as_str()),
+        ("ZeroSlot", endpoint_config::ZEROSLOT_URL.as_str()),
+    ];
+
+    loop {
+        // 并发 ping 所有端点
+        let ping_tasks: Vec<_> = urls
+            .iter()
+            .map(|(name, url)| {
+                let client = client.clone();
+                let name = *name;
+                let url = *url;
+                
+                tokio::spawn(async move {
+                    match tokio::time::timeout(
+                        tokio::time::Duration::from_secs(10),
+                        client.get(url).send()
+                    ).await {
+                        Ok(Ok(res)) => {
+                            log::info!("[{}] ping successful - status: {} - url: {}", 
+                                name, res.status(), url);
+                        }
+                        Ok(Err(err)) => {
+                            log::error!("[{}] ping failed: {} - url: {}", name, err, url);
+                        }
+                        Err(_) => {
+                            log::error!("[{}] ping timeout - url: {}", name, url);
+                        }
+                    }
+                })
+            })
+            .collect();
+
+        // 等待所有 ping 任务完成
+        for task in ping_tasks {
+            let _ = task.await;
+        }
+        
+        // 使用 tokio::time::sleep 进行异步等待
+        tokio::time::sleep(tokio::time::Duration::from_secs(interval_secs)).await;
+    }
+}
