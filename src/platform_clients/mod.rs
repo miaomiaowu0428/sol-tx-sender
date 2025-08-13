@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
 
+use log::info;
 use solana_sdk::hash::Hash;
 use solana_sdk::instruction::Instruction;
 use solana_sdk::pubkey::Pubkey;
@@ -218,6 +219,7 @@ pub async fn endpoint_keep_alive() {
         temporal::Temporal::get_endpoint(),
         zeroslot::ZeroSlot::get_endpoint(),
     ];
+    info!("Starting endpoint keep-alive with URLs: {:?}", urls);
     loop {
         for url in &urls {
             let response = client.get(url).send().await;
