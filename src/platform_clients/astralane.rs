@@ -27,8 +27,8 @@ pub const ASTRALANE_ENDPOINTS: &[&str] = &[
 ];
 
 pub struct Astralane {
-    pub endpoint: String,
-    pub auth_token: String,
+    pub endpoint: String, // 只保存基础 endpoint，不拼 key
+    pub auth_token: String, // 单独保存 key
     pub http_client: Arc<Client>,
 }
 
@@ -71,10 +71,19 @@ impl crate::platform_clients::SendTx for Astralane {
             .http_client
             .post(&self.endpoint)
             .header("Content-Type", "application/json")
-            .header("api-key", self.auth_token.as_str())
+            .header("api_key", self.auth_token.as_str())
             .json(&json!({
-                "transaction": encode_txs,
-                "mode": "fast"
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "sendTransaction",
+                "params": [
+                    encode_txs,
+                    {
+                        "encoding": "base64",
+                        "skipPreflight": true,
+                    },
+                    { "mevProtect": true }
+                ],
             }))
             .send()
             .await
@@ -99,7 +108,7 @@ impl crate::platform_clients::SendBundle for Astralane {
             return None;
         }
 
-        // 序列化所有交易
+        // 一次性发送所有交易
         let encoded_txs: Vec<String> = txs
             .iter()
             .map(|tx| base64::prelude::BASE64_STANDARD.encode(&bincode::serialize(tx).unwrap()))
@@ -109,27 +118,24 @@ impl crate::platform_clients::SendBundle for Astralane {
             .http_client
             .post(&self.endpoint)
             .header("Content-Type", "application/json")
-            .header("api-key", self.auth_token.as_str())
+            .header("api_key", self.auth_token.as_str())
             .json(&json!({
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "sendBundle",
-                "params": [encoded_txs],
+                "params": [encoded_txs], // 一次性发送所有交易
             }))
             .send()
             .await
         {
             Ok(res) => res.text().await.unwrap(),
             Err(e) => {
-                println!("错误: {}", e);
                 log::error!("send bundle error: {:?}", e);
                 return None;
             }
         };
 
         log::info!("astralane bundle response: {:?}", response);
-
-        // 返回所有交易的签名
         Some(txs.iter().map(|tx| tx.signatures[0]).collect())
     }
 }
