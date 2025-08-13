@@ -85,9 +85,12 @@ impl Helius {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTx for Helius {
-    async fn send_tx(&self, tx: &Transaction) -> Option<Signature> {
-        let encode_txs = base64::prelude::BASE64_STANDARD.encode(&bincode::serialize(tx).unwrap());
-        let response = match self
+    async fn send_tx(&self, tx: &Transaction) -> Result<Signature, String> {
+        let encode_txs = match bincode::serialize(tx) {
+            Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
+            Err(e) => return Err(format!("bincode serialize error: {}", e)),
+        };
+        let res = self
             .http_client
             .post(&self.endpoint)
             .header("Content-Type", "application/json")
@@ -106,23 +109,26 @@ impl crate::platform_clients::SendTx for Helius {
                 ],
             }))
             .send()
-            .await
-        {
-            Ok(res) => res.text().await.unwrap(),
+            .await;
+        let response = match res {
+            Ok(resp) => match resp.text().await {
+                Ok(text) => text,
+                Err(e) => return Err(format!("response text error: {}", e)),
+            },
             Err(e) => {
                 log::error!("send error: {:?}", e);
-                return None;
+                return Err(format!("send error: {}", e));
             }
         };
         log::info!("{:?}", response);
-        Some(tx.signatures[0])
+        Ok(tx.signatures[0])
     }
 }
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendBundle for Helius {
-    async fn send_bundle(&self, _txs: &[Transaction]) -> Option<Vec<Signature>> {
-        None // 暂不支持批量
+    async fn send_bundle(&self, _txs: &[Transaction]) -> Result<Vec<Signature>, String> {
+        Err("Helius 暂不支持批量交易".to_string())
     }
 }
 

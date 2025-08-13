@@ -78,8 +78,11 @@ impl Jito {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTx for Jito {
-    async fn send_tx(&self, tx: &Transaction) -> Option<Signature> {
-        let encode_txs = base64::prelude::BASE64_STANDARD.encode(&bincode::serialize(tx).unwrap());
+    async fn send_tx(&self, tx: &Transaction) -> Result<Signature, String> {
+        let encode_txs = match bincode::serialize(tx) {
+            Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
+            Err(e) => return Err(format!("bincode serialize error: {}", e)),
+        };
         let request_body = match serde_json::to_string(&json!({
             "id": 1,
             "jsonrpc": "2.0",
@@ -90,39 +93,40 @@ impl crate::platform_clients::SendTx for Jito {
             ]
         })) {
             Ok(body) => body,
-            Err(e) => {
-                log::error!("serde_json 失败, {}", e);
-                return None;
-            }
+            Err(e) => return Err(format!("serde_json error: {}", e)),
         };
         let url = format!("{}/api/v1/transactions", self.endpoint);
-        let response = match self
+        let res = self
             .http_client
             .post(&url)
             .header("Content-Type", "application/json")
             .body(request_body)
             .send()
-            .await
-        {
-            Ok(res) => res.text().await.unwrap(),
+            .await;
+        let response = match res {
+            Ok(resp) => match resp.text().await {
+                Ok(text) => text,
+                Err(e) => return Err(format!("response text error: {}", e)),
+            },
             Err(e) => {
                 log::error!("send error: {:?}", e);
-                return None;
+                return Err(format!("send error: {}", e));
             }
         };
         log::info!("jito response: {:?}", response);
-        // 这里只返回第一个签名
-        Some(tx.signatures[0])
+        Ok(tx.signatures[0])
     }
 }
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendBundle for Jito {
-    async fn send_bundle(&self, txs: &[Transaction]) -> Option<Vec<Signature>> {
+    async fn send_bundle(&self, txs: &[Transaction]) -> Result<Vec<Signature>, String> {
         let mut sigs = Vec::new();
         for tx in txs {
-            let encode_txs =
-                base64::prelude::BASE64_STANDARD.encode(&bincode::serialize(tx).unwrap());
+            let encode_txs = match bincode::serialize(tx) {
+                Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
+                Err(e) => return Err(format!("bincode serialize error: {}", e)),
+            };
             let request_body = match serde_json::to_string(&json!({
                 "id": 1,
                 "jsonrpc": "2.0",
@@ -133,30 +137,30 @@ impl crate::platform_clients::SendBundle for Jito {
                 ]
             })) {
                 Ok(body) => body,
-                Err(e) => {
-                    log::error!("serde_json 失败, {}", e);
-                    continue;
-                }
+                Err(e) => return Err(format!("serde_json error: {}", e)),
             };
             let url = format!("{}/api/v1/bundles", self.endpoint);
-            let response = match self
+            let res = self
                 .http_client
                 .post(&url)
                 .header("Content-Type", "application/json")
                 .body(request_body)
                 .send()
-                .await
-            {
-                Ok(res) => res.text().await.unwrap(),
+                .await;
+            let response = match res {
+                Ok(resp) => match resp.text().await {
+                    Ok(text) => text,
+                    Err(e) => return Err(format!("response text error: {}", e)),
+                },
                 Err(e) => {
                     log::error!("send error: {:?}", e);
-                    continue;
+                    return Err(format!("send error: {}", e));
                 }
             };
             log::info!("jito response: {:?}", response);
             sigs.push(tx.signatures[0]);
         }
-        Some(sigs)
+        Ok(sigs)
     }
 }
 

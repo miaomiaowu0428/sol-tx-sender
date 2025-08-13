@@ -65,9 +65,12 @@ impl Astralane {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTx for Astralane {
-    async fn send_tx(&self, tx: &Transaction) -> Option<Signature> {
-        let encode_txs = base64::prelude::BASE64_STANDARD.encode(&bincode::serialize(tx).unwrap());
-        let response = match self
+    async fn send_tx(&self, tx: &Transaction) -> Result<Signature, String> {
+        let encode_txs = match bincode::serialize(tx) {
+            Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
+            Err(e) => return Err(format!("bincode serialize error: {}", e)),
+        };
+        let res = self
             .http_client
             .post(&self.endpoint)
             .header("Content-Type", "application/json")
@@ -86,35 +89,39 @@ impl crate::platform_clients::SendTx for Astralane {
                 ],
             }))
             .send()
-            .await
-        {
-            Ok(res) => res.text().await.unwrap(),
+            .await;
+        let response = match res {
+            Ok(resp) => match resp.text().await {
+                Ok(text) => text,
+                Err(e) => return Err(format!("response text error: {}", e)),
+            },
             Err(e) => {
-                println!("错误: {}", e);
                 log::error!("send error: {:?}", e);
-                return None;
+                return Err(format!("send error: {}", e));
             }
         };
         log::info!("{:?}", response);
-        Some(tx.signatures[0])
+        Ok(tx.signatures[0])
     }
 }
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendBundle for Astralane {
-    async fn send_bundle(&self, txs: &[Transaction]) -> Option<Vec<Signature>> {
+    async fn send_bundle(&self, txs: &[Transaction]) -> Result<Vec<Signature>, String> {
         if txs.is_empty() {
             log::warn!("Empty transaction bundle provided");
-            return None;
+            return Err("Empty transaction bundle provided".to_string());
         }
 
-        // 一次性发送所有交易
-        let encoded_txs: Vec<String> = txs
-            .iter()
-            .map(|tx| base64::prelude::BASE64_STANDARD.encode(&bincode::serialize(tx).unwrap()))
-            .collect();
+        let mut encoded_txs = Vec::with_capacity(txs.len());
+        for tx in txs {
+            match bincode::serialize(tx) {
+                Ok(bytes) => encoded_txs.push(base64::prelude::BASE64_STANDARD.encode(&bytes)),
+                Err(e) => return Err(format!("bincode serialize error: {}", e)),
+            }
+        }
 
-        let response = match self
+        let res = self
             .http_client
             .post(&self.endpoint)
             .header("Content-Type", "application/json")
@@ -123,20 +130,23 @@ impl crate::platform_clients::SendBundle for Astralane {
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "sendBundle",
-                "params": [encoded_txs], // 一次性发送所有交易
+                "params": [encoded_txs],
             }))
             .send()
-            .await
-        {
-            Ok(res) => res.text().await.unwrap(),
+            .await;
+        let response = match res {
+            Ok(resp) => match resp.text().await {
+                Ok(text) => text,
+                Err(e) => return Err(format!("response text error: {}", e)),
+            },
             Err(e) => {
                 log::error!("send bundle error: {:?}", e);
-                return None;
+                return Err(format!("send bundle error: {}", e));
             }
         };
 
         log::info!("astralane bundle response: {:?}", response);
-        Some(txs.iter().map(|tx| tx.signatures[0]).collect())
+        Ok(txs.iter().map(|tx| tx.signatures[0]).collect())
     }
 }
 

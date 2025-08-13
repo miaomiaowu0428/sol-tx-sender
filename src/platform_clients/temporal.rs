@@ -95,15 +95,16 @@ impl Temporal {
 #[async_trait::async_trait]
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTx for Temporal {
-    async fn send_tx(&self, tx: &Transaction) -> Option<Signature> {
-        let encode_txs = base64::prelude::BASE64_STANDARD.encode(&bincode::serialize(tx).unwrap());
-
+    async fn send_tx(&self, tx: &Transaction) -> Result<Signature, String> {
+        let encode_txs = match bincode::serialize(tx) {
+            Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
+            Err(e) => return Err(format!("bincode serialize error: {}", e)),
+        };
         let mut url = String::with_capacity(self.endpoint.len() + self.token.len() + 20);
         url.push_str(&self.endpoint);
         url.push_str("?c=");
         url.push_str(&self.token);
-
-        let response = match self
+        let res = self
             .http_client
             .post(&url)
             .header("Content-Type", "application/json")
@@ -120,33 +121,36 @@ impl crate::platform_clients::SendTx for Temporal {
                 ],
             }))
             .send()
-            .await
-        {
-            Ok(res) => res.text().await.unwrap(),
+            .await;
+        let response = match res {
+            Ok(resp) => match resp.text().await {
+                Ok(text) => text,
+                Err(e) => return Err(format!("response text error: {}", e)),
+            },
             Err(e) => {
                 log::error!("send error: {:?}", e);
-                return None;
+                return Err(format!("send error: {}", e));
             }
         };
         info!("temporal: {}", response);
-        Some(tx.signatures[0])
+        Ok(tx.signatures[0])
     }
 }
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendBundle for Temporal {
-    async fn send_bundle(&self, txs: &[Transaction]) -> Option<Vec<Signature>> {
+    async fn send_bundle(&self, txs: &[Transaction]) -> Result<Vec<Signature>, String> {
         let mut sigs = Vec::new();
         for tx in txs {
-            let encode_txs =
-                base64::prelude::BASE64_STANDARD.encode(&bincode::serialize(tx).unwrap());
-
+            let encode_txs = match bincode::serialize(tx) {
+                Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
+                Err(e) => return Err(format!("bincode serialize error: {}", e)),
+            };
             let mut url = String::with_capacity(self.endpoint.len() + self.token.len() + 20);
             url.push_str(&self.endpoint);
             url.push_str("?c=");
             url.push_str(&self.token);
-
-            let response = match self
+            let res = self
                 .http_client
                 .post(&url)
                 .header("Content-Type", "application/json")
@@ -163,18 +167,21 @@ impl crate::platform_clients::SendBundle for Temporal {
                     ],
                 }))
                 .send()
-                .await
-            {
-                Ok(res) => res.text().await.unwrap(),
+                .await;
+            let response = match res {
+                Ok(resp) => match resp.text().await {
+                    Ok(text) => text,
+                    Err(e) => return Err(format!("response text error: {}", e)),
+                },
                 Err(e) => {
                     log::error!("send error: {:?}", e);
-                    continue;
+                    return Err(format!("send error: {}", e));
                 }
             };
             info!("temporal: {}", response);
             sigs.push(tx.signatures[0]);
         }
-        Some(sigs)
+        Ok(sigs)
     }
 }
 

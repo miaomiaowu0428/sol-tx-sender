@@ -83,9 +83,12 @@ impl NodeOne {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTx for NodeOne {
-    async fn send_tx(&self, tx: &Transaction) -> Option<Signature> {
-        let encode_txs = base64::prelude::BASE64_STANDARD.encode(&bincode::serialize(tx).unwrap());
-        let response = match self
+    async fn send_tx(&self, tx: &Transaction) -> Result<Signature, String> {
+        let encode_txs = match bincode::serialize(tx) {
+            Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
+            Err(e) => return Err(format!("bincode serialize error: {}", e)),
+        };
+        let res = self
             .http_client
             .post(&self.endpoint)
             .header("Content-Type", "application/json")
@@ -97,27 +100,32 @@ impl crate::platform_clients::SendTx for NodeOne {
                 "params": [encode_txs],
             }))
             .send()
-            .await
-        {
-            Ok(res) => res.text().await.unwrap(),
+            .await;
+        let response = match res {
+            Ok(resp) => match resp.text().await {
+                Ok(text) => text,
+                Err(e) => return Err(format!("response text error: {}", e)),
+            },
             Err(e) => {
                 log::error!("send error: {:?}", e);
-                return None;
+                return Err(format!("send error: {}", e));
             }
         };
         info!("node1: {}", response);
-        Some(tx.signatures[0])
+        Ok(tx.signatures[0])
     }
 }
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendBundle for NodeOne {
-    async fn send_bundle(&self, txs: &[Transaction]) -> Option<Vec<Signature>> {
+    async fn send_bundle(&self, txs: &[Transaction]) -> Result<Vec<Signature>, String> {
         let mut sigs = Vec::new();
         for tx in txs {
-            let encode_txs =
-                base64::prelude::BASE64_STANDARD.encode(&bincode::serialize(tx).unwrap());
-            let response = match self
+            let encode_txs = match bincode::serialize(tx) {
+                Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
+                Err(e) => return Err(format!("bincode serialize error: {}", e)),
+            };
+            let res = self
                 .http_client
                 .post(&self.endpoint)
                 .header("Content-Type", "application/json")
@@ -129,18 +137,21 @@ impl crate::platform_clients::SendBundle for NodeOne {
                     "params": [encode_txs],
                 }))
                 .send()
-                .await
-            {
-                Ok(res) => res.text().await.unwrap(),
+                .await;
+            let response = match res {
+                Ok(resp) => match resp.text().await {
+                    Ok(text) => text,
+                    Err(e) => return Err(format!("response text error: {}", e)),
+                },
                 Err(e) => {
                     log::error!("send error: {:?}", e);
-                    continue;
+                    return Err(format!("send error: {}", e));
                 }
             };
             info!("node1: {}", response);
             sigs.push(tx.signatures[0]);
         }
-        Some(sigs)
+        Ok(sigs)
     }
 }
 

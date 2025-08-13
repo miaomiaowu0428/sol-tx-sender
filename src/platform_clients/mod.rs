@@ -38,13 +38,13 @@ impl NonceParam {
 // 单笔交易发送 trait
 #[async_trait::async_trait]
 pub trait SendTx: Sync + Send {
-    async fn send_tx(&self, tx: &Transaction) -> Option<Signature>;
+    async fn send_tx(&self, tx: &Transaction) -> Result<Signature, String>;
 }
 
 // 批量交易发送 trait
 #[async_trait::async_trait]
 pub trait SendBundle: Sync + Send {
-    async fn send_bundle(&self, txs: &[Transaction]) -> Option<Vec<Signature>>;
+    async fn send_bundle(&self, txs: &[Transaction]) -> Result<Vec<Signature>, String>;
 }
 
 // 单笔交易组装 trait
@@ -124,13 +124,13 @@ impl<'a, T: SendTx + Sync + Send + 'a> TxEnvelope<'a, T> {
 
 #[async_trait::async_trait]
 pub trait TxSend: Send + Sync {
-    async fn send(&self) -> Option<Signature>;
+    async fn send(&self) -> Result<Signature, String>;
     fn sig(&self) -> Signature;
 }
 
 #[async_trait::async_trait]
 impl<'a, T: SendTx + Sync + Send + 'a> TxSend for TxEnvelope<'a, T> {
-    async fn send(&self) -> Option<Signature> {
+    async fn send(&self) -> Result<Signature, String> {
         self.sender.send_tx(&self.tx).await
     }
     fn sig(&self) -> Signature {
@@ -146,12 +146,12 @@ pub struct BundleEnvelope<'a, T: SendBundle + Sync + Send + 'a> {
 
 #[async_trait::async_trait]
 pub trait BundleSend {
-    async fn send_bundle(&self) -> Option<Vec<Signature>>;
+    async fn send_bundle(&self) -> Result<Vec<Signature>, String>;
 }
 
 #[async_trait::async_trait]
 impl<'a, T: SendBundle + Sync + Send + 'a> BundleSend for BundleEnvelope<'a, T> {
-    async fn send_bundle(&self) -> Option<Vec<Signature>> {
+    async fn send_bundle(&self) -> Result<Vec<Signature>, String> {
         self.sender.send_bundle(&self.txs).await
     }
 }
