@@ -86,14 +86,13 @@ impl crate::platform_clients::SendTx for Astralane {
             ],
         });
         println!("[astralane/send_tx] endpoint: {}", self.endpoint);
-        println!("[astralane/send_tx] api_key: {}", self.auth_token);
+        println!("[astralane/send_tx] api-key(header): {}", self.auth_token);
         println!("[astralane/send_tx] request body: {}", req_json);
         let res = self
             .http_client
             .post(&self.endpoint)
             .header("Content-Type", "application/json")
             .header("api-key", self.auth_token.as_str())
-            .header("api_key", self.auth_token.as_str())
             .json(&req_json)
             .send()
             .await;
