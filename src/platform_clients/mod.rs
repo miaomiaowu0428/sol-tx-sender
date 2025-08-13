@@ -66,39 +66,53 @@ pub trait BuildTx {
         Self: SendTx + Sync + Send + Sized,
     {
         let mut instructions = Vec::new();
-        
+
         // nonce 指令
         match nonce {
             NonceParam::Blockhash(_) => {}
-            NonceParam::NonceAccount { account, authority, .. } => {
-                let nonce_ix = solana_sdk::system_instruction::advance_nonce_account(account, authority);
+            NonceParam::NonceAccount {
+                account, authority, ..
+            } => {
+                let nonce_ix =
+                    solana_sdk::system_instruction::advance_nonce_account(account, authority);
                 instructions.push(nonce_ix);
             }
         }
-        
+
         // cu 指令（某些平台要求在 tip 之前）
         if let Some((cu_limit, cu_price)) = cu {
-            let limit_instruction = solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(*cu_limit);
+            let limit_instruction =
+                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(
+                    *cu_limit,
+                );
             instructions.push(limit_instruction);
-            let price_instruction = solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(*cu_price);
+            let price_instruction =
+                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(
+                    *cu_price,
+                );
             instructions.push(price_instruction);
-        }        
+        }
         // tip 转账
-        let tip_address = self.get_tip_address();
-        let tip_amt = tip.unwrap_or(self.get_min_tip_amount());
-        let tip_ix = solana_sdk::system_instruction::transfer(&signer.pubkey(), &tip_address, tip_amt);
-        instructions.push(tip_ix);
-        
+        if let Some(0) = tip {
+            // 如果 tip 为 0，则不添加 tip 转账指令
+        } else {
+            let tip_address = self.get_tip_address();
+            let tip_amt = tip.unwrap_or(self.get_min_tip_amount());
+            let tip_ix =
+                solana_sdk::system_instruction::transfer(&signer.pubkey(), &tip_address, tip_amt);
+            instructions.push(tip_ix);
+        }
+
         // 用户指令
         instructions.extend(ixs.iter().cloned());
-        
+
         let tx = Transaction::new_signed_with_payer(
             &instructions,
             Some(&signer.pubkey()),
             &[signer],
             *nonce.hash(),
         );
-        
+
         TxEnvelope { tx, sender: self }
     }
 }
@@ -145,7 +159,7 @@ pub struct BundleEnvelope<'a, T: SendBundle + Sync + Send + 'a> {
 }
 
 impl<'a, T: SendBundle + Sync + Send + 'a> BundleEnvelope<'a, T> {
-    pub fn sigs(&self)->Vec<Signature> {
+    pub fn sigs(&self) -> Vec<Signature> {
         self.txs.iter().map(|tx| tx.signatures[0]).collect()
     }
 }
