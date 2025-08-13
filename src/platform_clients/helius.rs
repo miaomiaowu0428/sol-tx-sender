@@ -1,3 +1,4 @@
+
 use std::sync::Arc;
 
 use base64::Engine;
@@ -16,7 +17,7 @@ use solana_sdk::{
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
-use crate::constants::HTTP_CLIENT;
+use crate::constants::{HTTP_CLIENT, REGION};
 use crate::platform_clients::{NonceParam, Region};
 
 // helius 小费地址
@@ -53,6 +54,19 @@ pub struct Helius {
 impl Helius {
     const MIN_TIP_AMOUNT_TX: u64 = 1_000_000; // 单笔交易最低 tip  
     const MIN_TIP_AMOUNT_BUNDLE: u64 = 1_000_000; // 批量交易最低 tip
+
+    pub fn get_endpoint() -> String {
+        match *REGION {
+            Region::NewYork => HELIUS_ENDPOINT[0].to_string(),
+            Region::Amsterdam => HELIUS_ENDPOINT[1].to_string(),
+            Region::Frankfurt => HELIUS_ENDPOINT[2].to_string(),
+            Region::London => HELIUS_ENDPOINT[3].to_string(),
+            Region::SaltLakeCity => HELIUS_ENDPOINT[4].to_string(),
+            Region::Tokyo => HELIUS_ENDPOINT[5].to_string(),
+            Region::Singapore => HELIUS_ENDPOINT[6].to_string(),
+            _ => HELIUS_ENDPOINT[0].to_string(),
+        }
+    }
 
     pub fn new() -> Self {
         let region = *crate::constants::REGION;

@@ -1,3 +1,4 @@
+
 use std::sync::Arc;
 
 use base64::Engine;
@@ -54,6 +55,7 @@ impl NodeOne {
             _ => String::new(),
         }
     }
+
 
     pub fn new() -> Self {
         let region = *crate::constants::REGION;

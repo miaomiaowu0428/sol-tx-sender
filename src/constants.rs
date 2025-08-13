@@ -81,48 +81,21 @@ pub mod endpoint_config {
 
     /// 根据地区选择最佳端点
     pub fn get_optimal_endpoint(endpoints: &[&str], region: Region) -> String {
+        // 索引严格一一对应：
+        // 0: NewYork, 1: Frankfurt, 2: Amsterdam, 3: London, 4: SaltLakeCity, 5: Tokyo, 6: LosAngeles, 7: Pittsburgh, 8: Singapore
         let index = match region {
-            Region::NewYork => match endpoints.len() {
-                len if len > 0 => 0,  // 通常第一个是 NY
-                _ => 0,
-            },
-            Region::Frankfurt => match endpoints.len() {
-                len if len > 1 => 1,  // 通常第二个是 Frankfurt
-                _ => 0,
-            },
-            Region::Amsterdam => match endpoints.len() {
-                len if len > 2 => 2,  // 通常第三个是 Amsterdam
-                _ => 0,
-            },
-            Region::London => match endpoints.len() {
-                len if len > 3 => 3,  // 通常第四个是 London
-                _ => 0,
-            },
-            Region::SaltLakeCity => match endpoints.len() {
-                len if len > 4 => 4,  // 通常第五个是 SLC
-                _ => 0,
-            },
-            Region::Tokyo => match endpoints.len() {
-                len if len > 5 => 5,  // 通常第六个是 Tokyo
-                len if len > 2 => 2,  // 或者第三个
-                _ => 0,
-            },
-            Region::Singapore => match endpoints.len() {
-                len if len > 6 => 6,  // 通常第七个是 Singapore
-                _ => 0,
-            },
-            Region::LosAngeles => match endpoints.len() {
-                len if len > 4 => 4,  // 通常第五个是 LA
-                _ => 0,
-            },
-            Region::Pittsburgh => match endpoints.len() {
-                len if len > 0 => 0,  // Pittsburgh 通常映射到第一个
-                _ => 0,
-            },
-            _ => 0,  // 默认使用第一个端点
+            Region::NewYork => 0,
+            Region::Frankfurt => 1,
+            Region::Amsterdam => 2,
+            Region::London => 3,
+            Region::SaltLakeCity => 4,
+            Region::Tokyo => 5,
+            Region::LosAngeles => 6,
+            Region::Pittsburgh => 7,
+            Region::Singapore => 8,
+            Region::Unknown => 0,
         };
-        
-        endpoints.get(index).unwrap_or(&endpoints[0]).to_string()
+        endpoints.get(index).unwrap_or_else(|| endpoints.get(0).unwrap()).to_string()
     }
 
     // 动态端点配置

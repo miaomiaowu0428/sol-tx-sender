@@ -209,20 +209,18 @@ impl<T: AsRef<str>> From<T> for Region {
 
 pub async fn endpoint_keep_alive() {
     let client: Arc<reqwest::Client> = HTTP_CLIENT.clone();
-
     let urls = vec![
-        ASTRALANE_URL.as_str(),
-        BLOCKRAZOR_URL.as_str(),
-        HELIUS_URL.as_str(),
-        JITO_URL.as_str(),
-        NODEONE_URL.as_str(),
-        TEMPORAL_URL.as_str(),
-        ZEROSLOT_URL.as_str(),
+        astralane::Astralane::get_endpoint(),
+        blockrazor::Blockrazor::get_endpoint(),
+        helius::Helius::get_endpoint(),
+        jito::Jito::get_endpoint(),
+        nodeone::NodeOne::get_endpoint(),
+        temporal::Temporal::get_endpoint(),
+        zeroslot::ZeroSlot::get_endpoint(),
     ];
-
     loop {
         for url in &urls {
-            let response = client.get(*url).send().await;
+            let response = client.get(url).send().await;
             match response {
                 Ok(_) => {
                     log::info!("{} ping successful ", url);

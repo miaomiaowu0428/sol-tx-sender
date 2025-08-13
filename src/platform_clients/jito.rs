@@ -1,3 +1,4 @@
+
 use std::sync::Arc;
 
 use base64::Engine;
@@ -16,7 +17,7 @@ use solana_sdk::{
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
-use crate::{constants::HTTP_CLIENT, platform_clients::NonceParam};
+use crate::{constants::{HTTP_CLIENT, REGION}, platform_clients::NonceParam};
 use crate::platform_clients::Region;
 
 pub const JITO_TIP_ACCOUNTS: &[Pubkey] = &[
@@ -48,6 +49,19 @@ pub struct Jito {
 impl Jito {
     const MIN_TIP_AMOUNT_TX: u64 = 1_000; // 单笔交易最低 tip
     const MIN_TIP_AMOUNT_BUNDLE: u64 = 10_000; // 批量交易最低 tip
+
+    pub fn get_endpoint() -> String {
+        match *REGION {
+            Region::NewYork => JITO_ENDPOINTS[0].to_string(),
+            Region::Frankfurt => JITO_ENDPOINTS[1].to_string(),
+            Region::Amsterdam => JITO_ENDPOINTS[2].to_string(),
+            Region::London => JITO_ENDPOINTS[3].to_string(),
+            Region::SaltLakeCity => JITO_ENDPOINTS[4].to_string(),
+            Region::Tokyo => JITO_ENDPOINTS[5].to_string(),
+            Region::Singapore => JITO_ENDPOINTS[6].to_string(),
+            _ => JITO_ENDPOINTS[0].to_string(),
+        }
+    }
 
     pub fn new() -> Self {
         let region = *crate::constants::REGION;

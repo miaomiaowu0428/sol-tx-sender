@@ -16,7 +16,7 @@ use solana_sdk::{
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
-use crate::constants::HTTP_CLIENT;
+use crate::constants::{HTTP_CLIENT, REGION};
 use crate::platform_clients::{BuildBundle, BuildTx, NonceParam, Region, SendBundle, SendTx};
 
 const BLOCKRAZOR_TIP_ACCOUNTS: &[Pubkey] = &[
@@ -56,6 +56,16 @@ impl Blockrazor {
 
     pub fn new() -> Self {
         Self::with_client(HTTP_CLIENT.clone())
+    }
+
+    pub fn get_endpoint() -> String {
+        match *REGION {
+            Region::Frankfurt => BLOCKRAZOR_ENDIPOINTS[0].to_string(),
+            Region::NewYork => BLOCKRAZOR_ENDIPOINTS[1].to_string(),
+            Region::Tokyo => BLOCKRAZOR_ENDIPOINTS[2].to_string(),
+            Region::Amsterdam => BLOCKRAZOR_ENDIPOINTS[3].to_string(),
+            _ => BLOCKRAZOR_ENDIPOINTS[0].to_string(),
+        }
     }
 
     pub fn with_client(http_client: Arc<Client>) -> Self {
@@ -138,11 +148,11 @@ impl BuildTx for Blockrazor {
     fn get_tip_address(&self) -> Pubkey {
         self.get_tip_address()
     }
-    
+
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
     }
-    
+
     // 使用默认实现，无需重写 build_tx
 }
 

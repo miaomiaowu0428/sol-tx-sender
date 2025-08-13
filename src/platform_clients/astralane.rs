@@ -1,4 +1,4 @@
-use crate::constants::HTTP_CLIENT;
+use crate::constants::{HTTP_CLIENT, REGION};
 use crate::platform_clients::Region;
 use base64::Engine;
 use rand::seq::IndexedRandom;
@@ -35,16 +35,19 @@ pub struct Astralane {
 impl Astralane {
     const MIN_TIP_AMOUNT_TX: u64 = 0_000_100_000; // 单笔交易最低 tip
 
-    pub fn new() -> Self {
-        let region = *crate::constants::REGION;
-        let endpoint = match region {
+    pub fn get_endpoint() -> String {
+        match *REGION {
             Region::Frankfurt => ASTRALANE_ENDPOINTS[0].to_string(),
             Region::LosAngeles => ASTRALANE_ENDPOINTS[1].to_string(),
             Region::Tokyo => ASTRALANE_ENDPOINTS[2].to_string(),
             Region::NewYork => ASTRALANE_ENDPOINTS[3].to_string(),
             Region::Amsterdam => ASTRALANE_ENDPOINTS[4].to_string(),
             _ => ASTRALANE_ENDPOINTS[0].to_string(),
-        };
+        }
+    }
+
+    pub fn new() -> Self {
+        let endpoint = Self::get_endpoint().to_string();
         let auth_token = std::env::var("ASTRALANE_KEY").unwrap_or_default();
         let http_client = HTTP_CLIENT.clone();
         Astralane {
