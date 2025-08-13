@@ -33,7 +33,7 @@ pub struct Astralane {
 }
 
 impl Astralane {
-    const MIN_TIP_AMOUNT_TX: u64 = 0_000_010_000; // 单笔交易最低 tip
+    const MIN_TIP_AMOUNT_TX: u64 = 0_000_100_000; // 单笔交易最低 tip
     const MIN_TIP_AMOUNT_BUNDLE: u64 = 0_003_000_000; // 批量交易最低 tip
 
     pub fn new() -> Self {
