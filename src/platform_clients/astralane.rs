@@ -65,7 +65,7 @@ impl Astralane {
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTx for Astralane {
     async fn send_tx(&self, tx: &Transaction) -> Result<Signature, String> {
-        let encode_txs = match bincode::serialize(tx) {
+        let encode_tx = match bincode::serialize(tx) {
             Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
             Err(e) => {
                 println!("[astralane/send_tx] bincode serialize error: {}", e);
@@ -77,7 +77,7 @@ impl crate::platform_clients::SendTx for Astralane {
             "id": 1,
             "method": "sendTransaction",
             "params": [
-                encode_txs,
+                encode_tx,
                 {
                     "encoding": "base64",
                     "skipPreflight": true,
@@ -96,6 +96,7 @@ impl crate::platform_clients::SendTx for Astralane {
             .json(&req_json)
             .send()
             .await;
+        println!("[astralane/send_tx] res: {res:?}");
         let response = match res {
             Ok(resp) => match resp.text().await {
                 Ok(text) => text,
