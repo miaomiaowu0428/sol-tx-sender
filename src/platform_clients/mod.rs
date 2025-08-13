@@ -10,7 +10,7 @@ use solana_sdk::signature::{Keypair, Signature};
 use solana_sdk::signer::Signer;
 use solana_sdk::transaction::Transaction;
 
-use crate::constants::{HTTP_CLIENT, endpoint_config::*};
+use crate::constants::{HTTP_CLIENT};
 pub mod astralane;
 pub mod blockrazor;
 pub mod helius;
