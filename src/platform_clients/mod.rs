@@ -144,6 +144,12 @@ pub struct BundleEnvelope<'a, T: SendBundle + Sync + Send + 'a> {
     pub sender: &'a T,
 }
 
+impl<'a, T: SendBundle + Sync + Send + 'a> BundleEnvelope<'a, T> {
+    pub fn sigs(&self)->Vec<Signature> {
+        self.txs.iter().map(|tx| tx.signatures[0]).collect()
+    }
+}
+
 #[async_trait::async_trait]
 pub trait BundleSend {
     async fn send_bundle(&self) -> Result<Vec<Signature>, String>;
@@ -186,25 +192,6 @@ impl<T: AsRef<str>> From<T> for Region {
         }
     }
 }
-
-// // 记录成功上链的客户端，以及方法
-// #[derive(Debug, Clone, Copy)]
-// pub enum SuccessSwqos {
-//     Astralane(SendMethod),
-//     Blockrazor(SendMethod),
-//     Helius,
-//     Jito(SendMethod),
-//     NodeOne,
-//     Temporal,
-//     ZeroSlot,
-// }
-
-// #[derive(Debug, Clone, Copy)]
-// pub enum SendMethod {
-//     SendTransaction,     // 发送的普通交易
-//     SendBundle,          // 发送的捆绑交易
-//     SendGrpcTransaction, // 通过GRPC发送的交易
-// }
 
 pub async fn endpoint_keep_alive() {
     let client: Arc<reqwest::Client> = HTTP_CLIENT.clone();
