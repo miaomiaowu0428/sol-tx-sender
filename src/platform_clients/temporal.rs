@@ -97,16 +97,27 @@ impl Temporal {
 impl crate::platform_clients::SendTx for Temporal {
     async fn send_tx(&self, tx: &Transaction) -> Option<Signature> {
         let encode_txs = base64::prelude::BASE64_STANDARD.encode(&bincode::serialize(tx).unwrap());
+
+        let mut url = String::with_capacity(self.endpoint.len() + self.token.len() + 20);
+        url.push_str(&self.endpoint);
+        url.push_str("?c=");
+        url.push_str(&self.token);
+
         let response = match self
             .http_client
-            .post(&self.endpoint)
+            .post(&url)
             .header("Content-Type", "application/json")
-            .header("x-temporal-key", self.token.as_str())
             .json(&json! ({
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "sendTransaction",
-                "params": [encode_txs],
+                "params": [
+                    encode_txs,
+                    {
+                        "encoding": "base64",
+                        "skipPreflight": true,
+                    }
+                ],
             }))
             .send()
             .await
@@ -129,16 +140,27 @@ impl crate::platform_clients::SendBundle for Temporal {
         for tx in txs {
             let encode_txs =
                 base64::prelude::BASE64_STANDARD.encode(&bincode::serialize(tx).unwrap());
+
+            let mut url = String::with_capacity(self.endpoint.len() + self.token.len() + 20);
+            url.push_str(&self.endpoint);
+            url.push_str("?c=");
+            url.push_str(&self.token);
+
             let response = match self
                 .http_client
-                .post(&self.endpoint)
+                .post(&url)
                 .header("Content-Type", "application/json")
-                .header("x-temporal-key", self.token.as_str())
                 .json(&json! ({
                     "jsonrpc": "2.0",
                     "id": 1,
                     "method": "sendTransaction",
-                    "params": [encode_txs],
+                    "params": [
+                        encode_txs,
+                        {
+                            "encoding": "base64",
+                            "skipPreflight": true,
+                        }
+                    ],
                 }))
                 .send()
                 .await

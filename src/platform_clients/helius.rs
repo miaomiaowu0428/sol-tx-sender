@@ -101,7 +101,7 @@ impl crate::platform_clients::SendTx for Helius {
                     {
                         "encoding": "base64",
                         "skipPreflight": true,
-                        "maxReties": 0,
+                        "maxRetries": 0,
                     }
                 ],
             }))

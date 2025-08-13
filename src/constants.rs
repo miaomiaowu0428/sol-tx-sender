@@ -231,6 +231,8 @@ pub async fn endpoint_keep_alive_with_interval(interval_secs: u64) {
     ];
 
     loop {
+        let start_time = std::time::Instant::now();
+        
         // 并发 ping 所有端点
         let ping_tasks: Vec<_> = urls
             .iter()
@@ -245,23 +247,52 @@ pub async fn endpoint_keep_alive_with_interval(interval_secs: u64) {
                         client.get(url).send()
                     ).await {
                         Ok(Ok(res)) => {
-                            log::info!("✅ [{}] ping successful - status: {}", name, res.status());
+                            let status = res.status();
+                            match status.as_u16() {
+                                200..=299 => {
+                                    log::info!("🟢 [{}] healthy - status: {}", name, status);
+                                    (name, "healthy")
+                                }
+                                400..=499 => {
+                                    log::info!("🟡 [{}] reachable (needs auth/method) - status: {}", name, status);
+                                    (name, "reachable")
+                                }
+                                500..=599 => {
+                                    log::warn!("🟠 [{}] reachable (server error) - status: {}", name, status);
+                                    (name, "server_error")
+                                }
+                                _ => {
+                                    log::info!("🔵 [{}] responded - status: {}", name, status);
+                                    (name, "responded")
+                                }
+                            }
                         }
                         Ok(Err(err)) => {
-                            log::error!("❌ [{}] ping failed: {}", name, err);
+                            log::error!("🔴 [{}] connection failed: {}", name, err);
+                            (name, "failed")
                         }
                         Err(_) => {
-                            log::error!("⏰ [{}] ping timeout", name);
+                            log::error!("⏰ [{}] timeout (>10s)", name);
+                            (name, "timeout")
                         }
                     }
                 })
             })
             .collect();
 
-        // 等待所有 ping 任务完成
+        // 等待所有 ping 任务完成并收集结果
+        let mut results = Vec::new();
         for task in ping_tasks {
-            let _ = task.await;
+            if let Ok(result) = task.await {
+                results.push(result);
+            }
         }
+        
+        // 打印健康检查摘要
+        let duration = start_time.elapsed();
+        let healthy_count = results.iter().filter(|(_, status)| matches!(*status, "healthy" | "reachable" | "responded")).count();
+        log::info!("📋 Health check complete: {}/{} endpoints reachable in {:?}", 
+                  healthy_count, results.len(), duration);
         
         // 使用 tokio::time::sleep 进行异步等待
         tokio::time::sleep(tokio::time::Duration::from_secs(interval_secs)).await;
