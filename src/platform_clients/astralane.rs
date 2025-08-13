@@ -34,7 +34,6 @@ pub struct Astralane {
 
 impl Astralane {
     const MIN_TIP_AMOUNT_TX: u64 = 0_000_100_000; // 单笔交易最低 tip
-    const MIN_TIP_AMOUNT_BUNDLE: u64 = 0_003_000_000; // 批量交易最低 tip
 
     pub fn new() -> Self {
         let region = *crate::constants::REGION;
@@ -68,39 +67,49 @@ impl crate::platform_clients::SendTx for Astralane {
     async fn send_tx(&self, tx: &Transaction) -> Result<Signature, String> {
         let encode_txs = match bincode::serialize(tx) {
             Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
-            Err(e) => return Err(format!("bincode serialize error: {}", e)),
+            Err(e) => {
+                println!("[astralane/send_tx] bincode serialize error: {}", e);
+                return Err(format!("bincode serialize error: {}", e));
+            }
         };
+        let req_json = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "sendTransaction",
+            "params": [
+                encode_txs,
+                {
+                    "encoding": "base64",
+                    "skipPreflight": true,
+                },
+                { "mevProtect": true }
+            ],
+        });
+        println!("[astralane/send_tx] endpoint: {}", self.endpoint);
+        println!("[astralane/send_tx] api_key: {}", self.auth_token);
+        println!("[astralane/send_tx] request body: {}", req_json);
         let res = self
             .http_client
             .post(&self.endpoint)
             .header("Content-Type", "application/json")
             .header("api_key", self.auth_token.as_str())
-            .json(&json!({
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "sendTransaction",
-                "params": [
-                    encode_txs,
-                    {
-                        "encoding": "base64",
-                        "skipPreflight": true,
-                    },
-                    { "mevProtect": true }
-                ],
-            }))
+            .json(&req_json)
             .send()
             .await;
         let response = match res {
             Ok(resp) => match resp.text().await {
                 Ok(text) => text,
-                Err(e) => return Err(format!("response text error: {}", e)),
+                Err(e) => {
+                    println!("[astralane/send_tx] response text error: {}", e);
+                    return Err(format!("response text error: {}", e));
+                }
             },
             Err(e) => {
-                log::error!("send error: {:?}", e);
+                println!("[astralane/send_tx] send error: {}", e);
                 return Err(format!("send error: {}", e));
             }
         };
-        log::info!("{:?}", response);
+        println!("[astralane/send_tx] response: {}", response);
         Ok(tx.signatures[0])
     }
 }
@@ -109,7 +118,7 @@ impl crate::platform_clients::SendTx for Astralane {
 impl crate::platform_clients::SendBundle for Astralane {
     async fn send_bundle(&self, txs: &[Transaction]) -> Result<Vec<Signature>, String> {
         if txs.is_empty() {
-            log::warn!("Empty transaction bundle provided");
+            println!("[astralane/send_bundle] Empty transaction bundle provided");
             return Err("Empty transaction bundle provided".to_string());
         }
 
@@ -117,35 +126,44 @@ impl crate::platform_clients::SendBundle for Astralane {
         for tx in txs {
             match bincode::serialize(tx) {
                 Ok(bytes) => encoded_txs.push(base64::prelude::BASE64_STANDARD.encode(&bytes)),
-                Err(e) => return Err(format!("bincode serialize error: {}", e)),
+                Err(e) => {
+                    println!("[astralane/send_bundle] bincode serialize error: {}", e);
+                    return Err(format!("bincode serialize error: {}", e));
+                }
             }
         }
 
+        let req_json = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "sendBundle",
+            "params": [encoded_txs],
+        });
+        println!("[astralane/send_bundle] endpoint: {}", self.endpoint);
+        println!("[astralane/send_bundle] api_key: {}", self.auth_token);
+        println!("[astralane/send_bundle] request body: {}", req_json);
         let res = self
             .http_client
             .post(&self.endpoint)
             .header("Content-Type", "application/json")
             .header("api_key", self.auth_token.as_str())
-            .json(&json!({
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "sendBundle",
-                "params": [encoded_txs],
-            }))
+            .json(&req_json)
             .send()
             .await;
         let response = match res {
             Ok(resp) => match resp.text().await {
                 Ok(text) => text,
-                Err(e) => return Err(format!("response text error: {}", e)),
+                Err(e) => {
+                    println!("[astralane/send_bundle] response text error: {}", e);
+                    return Err(format!("response text error: {}", e));
+                }
             },
             Err(e) => {
-                log::error!("send bundle error: {:?}", e);
+                println!("[astralane/send_bundle] send error: {}", e);
                 return Err(format!("send bundle error: {}", e));
             }
         };
-
-        log::info!("astralane bundle response: {:?}", response);
+        println!("[astralane/send_bundle] response: {}", response);
         Ok(txs.iter().map(|tx| tx.signatures[0]).collect())
     }
 }
