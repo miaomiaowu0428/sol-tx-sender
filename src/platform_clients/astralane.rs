@@ -92,6 +92,7 @@ impl crate::platform_clients::SendTx for Astralane {
             .http_client
             .post(&self.endpoint)
             .header("Content-Type", "application/json")
+            .header("api-key", self.auth_token.as_str())
             .header("api_key", self.auth_token.as_str())
             .json(&req_json)
             .send()
