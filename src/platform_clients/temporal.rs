@@ -204,22 +204,9 @@ impl crate::platform_clients::BuildBundle for Temporal {
     }
 }
 
-// use solana_system_interface::instruction;
-
-// #[tokio::test]
-// async fn test() {
-//     dotenv().ok();
-//     let hash = JSON_RPC_CLIENT.get_latest_blockhash().await.unwrap();
-//     let ixs = instruction::transfer(&PAYER.pubkey(), &PAYER.pubkey(), 0.01.to_lamport());
-
-//     println!("region: {}", REGION.to_string());
-
-//     let region = Region::from(REGION.to_string());
-//     println!("region: {:?}", region);
-
-//     let temporal = Temporal::new(JSON_RPC_CLIENT.clone(), region, TEMPORAL_KEY.to_string());
-//     let res = temporal.send_transaction(&mut vec![ixs], &PAYER, hash).await;
-
-//     // let res = nonces_send_transaction(&mut vec![ixs], &PAYER, hash, &JSON_RPC_CLIENT).await;
-//     println!("{:?}", res);
-// }
+use std::fmt;
+impl fmt::Display for Temporal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Temporal")
+    }
+}
