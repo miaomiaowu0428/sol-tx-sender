@@ -18,8 +18,8 @@ use crate::constants::{HTTP_CLIENT, REGION};
 use crate::platform_clients::Region;
 
 pub const ASTRALANE_TIP_ACCOUNTS: &[Pubkey] = &[
-    pubkey!("astrazznxsGUhWShqgNtAdfrzP2G83DzcWVJDxwV9bF"),
-    // pubkey!("astra4uejePWneqNaJKuFFA8oonqCE1sqF6b45kDMZm"),
+    // pubkey!("astrazznxsGUhWShqgNtAdfrzP2G83DzcWVJDxwV9bF"),
+    pubkey!("astra4uejePWneqNaJKuFFA8oonqCE1sqF6b45kDMZm"),
     // pubkey!("astra9xWY93QyfG6yM8zwsKsRodscjQ2uU2HKNL5prk"),
     // pubkey!("astraRVUuTHjpwEVvNBeQEgwYx9w9CFyfxjYoobCZhL"),
 ];

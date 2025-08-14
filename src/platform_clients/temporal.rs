@@ -13,8 +13,8 @@ use crate::constants::{HTTP_CLIENT, REGION};
 use crate::platform_clients::Region;
 
 pub const TEMPORAL_TIP_ACCOUNTS: &[Pubkey] = &[
-    pubkey!("TEMPaMeCRFAS9EKF53Jd6KpHxgL47uWLcpFArU1Fanq"),
-    // pubkey!("noz3jAjPiHuBPqiSPkkugaJDkJscPuRhYnSpbi8UvC4"),
+    // pubkey!("TEMPaMeCRFAS9EKF53Jd6KpHxgL47uWLcpFArU1Fanq"),
+    pubkey!("noz3jAjPiHuBPqiSPkkugaJDkJscPuRhYnSpbi8UvC4"),
     // pubkey!("noz3str9KXfpKknefHji8L1mPgimezaiUyCHYMDv1GE"),
     // pubkey!("noz6uoYCDijhu1V7cutCpwxNiSovEwLdRHPwmgCGDNo"),
     // pubkey!("noz9EPNcT7WH6Sou3sr3GGjHQYVkN3DNirpbvDkv9YJ"),
