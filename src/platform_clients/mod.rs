@@ -1,23 +1,4 @@
-// 通用交易枚举
-pub enum SolTx {
-    Legacy(Transaction),
-    V0(VersionedTransaction),
-}
 
-impl SolTx {
-    pub fn to_base64(&self) -> Result<String, Box<dyn std::error::Error>> {
-        match self {
-            SolTx::Legacy(tx) => {
-                let data = bincode::serialize(tx)?;
-                Ok(base64::encode(data))
-            }
-            SolTx::V0(v0tx) => {
-                let data = bincode::serialize(v0tx)?;
-                Ok(base64::encode(data))
-            }
-        }
-    }
-}
 use solana_sdk::transaction::Transaction;
 
 use solana_sdk::{
@@ -45,6 +26,31 @@ pub mod jito;
 pub mod nodeone;
 pub mod temporal;
 pub mod zeroslot;
+
+
+// 通用交易枚举
+pub enum SolTx {
+    Legacy(Transaction),
+    V0(VersionedTransaction),
+}
+
+impl SolTx {
+    pub fn to_base64(&self) -> Result<String, Box<dyn std::error::Error>> {
+        match self {
+            SolTx::Legacy(tx) => {
+                let data = bincode::serialize(tx)?;
+                Ok(base64::encode(data))
+            }
+            SolTx::V0(v0tx) => {
+                let data = bincode::serialize(v0tx)?;
+                Ok(base64::encode(data))
+            }
+        }
+    }
+}
+
+
+
 
 // 交易组装 trait
 pub enum NonceParam {
@@ -89,7 +95,7 @@ pub trait BuildTx {
         signer: &Arc<Keypair>,
         tip: &Option<u64>,
         nonce: &NonceParam,
-        cu: &Option<(u32, u64)>,
+        cu: &(Option<u32>, Option<u64>),
     ) -> TxEnvelope<'a, Self>
     where
         Self: SendTxEncoded + Sync + Send + Sized + Display,
@@ -109,18 +115,18 @@ pub trait BuildTx {
         }
 
         // cu 指令（某些平台要求在 tip 之前）
-        if let Some((cu_limit, cu_price)) = cu {
+        if let Some(cu_limit) = cu.0 {
             let limit_instruction =
-                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(
-                    *cu_limit,
-                );
+                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(cu_limit);
             instructions.push(limit_instruction);
+        }
+        if let Some(cu_price) = cu.1 {
             let price_instruction =
-                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(
-                    *cu_price,
-                );
+                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(cu_price);
             instructions.push(price_instruction);
         }
+
+
         // tip 转账
         if let Some(0) = tip {
             // 如果 tip 为 0，则不添加 tip 转账指令
@@ -329,7 +335,7 @@ pub trait BuildV0Tx {
         signer: &Arc<Keypair>,
         tip: &Option<u64>,
         nonce: &NonceParam,
-        cu: &Option<(u32, u64)>,
+        cu: &(Option<u32>, Option<u64>),
         address_lookup_tables: &[AddressLookupTableAccount],
     ) -> Result<V0TxEnvelope<'a, Self>, Box<dyn std::error::Error>>
     where
@@ -351,10 +357,14 @@ pub trait BuildV0Tx {
         }
 
         // cu 指令
-        if let Some((cu_limit, cu_price)) = cu {
-            let limit_instruction = ComputeBudgetInstruction::set_compute_unit_limit(*cu_limit);
+        if let Some(cu_limit) = cu.0 {
+            let limit_instruction =
+                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(cu_limit);
             instructions.push(limit_instruction);
-            let price_instruction = ComputeBudgetInstruction::set_compute_unit_price(*cu_price);
+        }
+        if let Some(cu_price) = cu.1 {
+            let price_instruction =
+                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(cu_price);
             instructions.push(price_instruction);
         }
 
