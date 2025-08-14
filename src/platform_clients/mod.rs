@@ -235,7 +235,6 @@ pub async fn endpoint_keep_alive() {
             }
         }
         sleep(Duration::from_secs(60)).await;
-        tokio::sleep(Duration::from_secs(60)).await;
     }
 }
 
