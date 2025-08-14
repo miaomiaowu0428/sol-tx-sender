@@ -268,16 +268,43 @@ fn test_region() {
     }
 }
 
+pub struct V0TxEnvelope<'a, T: BuildV0Tx + Sync + Send + ?Sized> {
+    pub tx: VersionedTransaction,
+    pub sender: &'a T,
+}
+
+impl<'a, T: BuildV0Tx + Sync + Send + ?Sized> V0TxEnvelope<'a, T> {
+    pub fn tx(self) -> VersionedTransaction {
+        self.tx
+    }
+}
+
+#[async_trait::async_trait]
+pub trait V0TxSend: Send + Sync {
+    async fn send(&self) -> Result<Signature, String>;
+    fn sig(&self) -> Signature;
+}
+
+#[async_trait::async_trait]
+impl<'a, T: BuildV0Tx + SendTx + Sync + Send + ?Sized> V0TxSend for V0TxEnvelope<'a, T> {
+    async fn send(&self) -> Result<Signature, String> {
+        self.sender.send_tx(&self.tx).await
+    }
+    fn sig(&self) -> Signature {
+        self.tx.signatures[0]
+    }
+}
+
 pub trait BuildV0Tx {
-    fn build_v0_tx(
-        &self,
+    fn build_v0_tx<'a>(
+        &'a self,
         ixs: &[Instruction],
         signer: &Arc<Keypair>,
         tip: &Option<u64>,
         nonce: &NonceParam,
         cu: &Option<(u32, u64)>,
         address_lookup_tables: &[AddressLookupTableAccount],
-    ) -> Result<VersionedTransaction, Box<dyn std::error::Error>>
+    ) -> Result<V0TxEnvelope<'a, Self>, Box<dyn std::error::Error>>
     where
         Self: Sync + Send + Sized + Display + SendTx + BuildTx,
     {
@@ -286,10 +313,8 @@ pub trait BuildV0Tx {
         use solana_sdk::system_instruction;
         use solana_sdk::compute_budget::ComputeBudgetInstruction;
 
-
         let hash = *nonce.hash();
         let payer = signer.pubkey();
-
         let mut instructions = Vec::new();
 
         // nonce advance 指令
@@ -330,7 +355,7 @@ pub trait BuildV0Tx {
             solana_sdk::message::VersionedMessage::V0(message),
             &[signer.as_ref()],
         )?;
-        Ok(transaction)
+        Ok(V0TxEnvelope { tx: transaction, sender: self })
     }
 }
 
