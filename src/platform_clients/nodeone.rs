@@ -33,8 +33,8 @@ pub const NODEONE_TIP_ACCOUNTS: &[Pubkey] = &[
 // one one 地址
 pub const NODEONE_ENDPOINT: &[&str] = &[
     "https://ny.node1.me",  // NY
-    "https://fra.node1.me", // AMS
-    "https://ams.node1.me", // Frankfurt
+    "https://fra.node1.me", // Frankfurt
+    "https://ams.node1.me", // Amsterdam
 ];
 
 pub struct NodeOne {
@@ -50,8 +50,8 @@ impl NodeOne {
     pub fn get_endpoint() -> String {
         match *REGION {
             Region::NewYork => NODEONE_ENDPOINT[0].to_string(),
-            Region::Amsterdam => NODEONE_ENDPOINT[1].to_string(),
-            Region::Frankfurt => NODEONE_ENDPOINT[2].to_string(),
+            Region::Frankfurt => NODEONE_ENDPOINT[1].to_string(),
+            Region::Amsterdam => NODEONE_ENDPOINT[2].to_string(),
             _ => String::new(),
         }
     }
@@ -61,8 +61,8 @@ impl NodeOne {
         let region = *crate::constants::REGION;
         let endpoint = match region {
             Region::NewYork => NODEONE_ENDPOINT[0].to_string(),
-            Region::Amsterdam => NODEONE_ENDPOINT[1].to_string(),
-            Region::Frankfurt => NODEONE_ENDPOINT[2].to_string(),
+            Region::Frankfurt => NODEONE_ENDPOINT[1].to_string(),
+            Region::Amsterdam => NODEONE_ENDPOINT[2].to_string(),
             _ => NODEONE_ENDPOINT[0].to_string(),
         };
         let auth_token = std::env::var("NODEONE_KEY").unwrap_or_default();
