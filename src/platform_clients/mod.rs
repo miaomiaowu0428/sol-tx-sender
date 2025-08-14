@@ -374,7 +374,7 @@ pub trait BuildV0Tx {
         } else {
             let tip_address = self.get_tip_address();
             let tip_amt = tip.unwrap_or(self.get_min_tip_amount());
-            info!("Build V0Tx with tip: {} at {} tip address: {}", tip_amt as f64 / 1_000_000_000.0, self, tip_address);
+            info!("Build V0Tx with tip: {}({tip_amt}lamports) at {} tip address: {}", tip_amt as f64 / 1_000_000_000.0, self, tip_address);
             let tip_ix = system_instruction::transfer(&payer, &tip_address, tip_amt);
             instructions.push(tip_ix);
         }
