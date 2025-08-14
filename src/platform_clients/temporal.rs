@@ -1,3 +1,8 @@
+impl Temporal {
+    pub fn display() -> &'static str {
+        "Temporal"
+    }
+}
 
 use std::sync::Arc;
 

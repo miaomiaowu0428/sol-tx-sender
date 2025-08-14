@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
@@ -64,7 +65,7 @@ pub trait BuildTx {
         cu: &Option<(u32, u64)>,
     ) -> TxEnvelope<'a, Self>
     where
-        Self: SendTx + Sync + Send + Sized,
+        Self: SendTx + Sync + Send + Sized + Display,
     {
         let mut instructions = Vec::new();
 
@@ -99,6 +100,7 @@ pub trait BuildTx {
         } else {
             let tip_address = self.get_tip_address();
             let tip_amt = tip.unwrap_or(self.get_min_tip_amount());
+            info!("Build Tx with tip: {} at {}", tip_amt as f64 / 1_000_000_000.0, self);
             let tip_ix =
                 solana_sdk::system_instruction::transfer(&signer.pubkey(), &tip_address, tip_amt);
             instructions.push(tip_ix);

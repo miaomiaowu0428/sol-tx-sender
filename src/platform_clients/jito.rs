@@ -1,3 +1,8 @@
+impl Jito {
+    pub fn display() -> &'static str {
+        "Jito"
+    }
+}
 
 use std::sync::Arc;
 

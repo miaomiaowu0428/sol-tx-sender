@@ -1,3 +1,8 @@
+impl Blockrazor {
+    pub fn display() -> &'static str {
+        "Blockrazor"
+    }
+}
 use std::sync::Arc;
 
 use base64::Engine;

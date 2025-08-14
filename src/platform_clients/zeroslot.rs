@@ -1,3 +1,8 @@
+impl ZeroSlot {
+    pub fn display() -> &'static str {
+        "ZeroSlot"
+    }
+}
 use std::sync::Arc;
 
 use base64::Engine;

@@ -1,3 +1,8 @@
+impl NodeOne {
+    pub fn display() -> &'static str {
+        "NodeOne"
+    }
+}
 
 use std::sync::Arc;
 

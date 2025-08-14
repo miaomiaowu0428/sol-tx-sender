@@ -1,3 +1,8 @@
+impl Astralane {
+    pub fn display() -> &'static str {
+        "Astralane"
+    }
+}
 use crate::constants::{HTTP_CLIENT, REGION};
 use crate::platform_clients::Region;
 use base64::Engine;

@@ -1,3 +1,8 @@
+impl Helius {
+    pub fn display() -> &'static str {
+        "Helius"
+    }
+}
 
 use std::sync::Arc;
 
