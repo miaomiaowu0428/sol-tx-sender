@@ -1,10 +1,5 @@
-impl ZeroSlot {
-    pub fn display() -> &'static str {
-        "ZeroSlot"
-    }
-}
+use std::fmt::Display;
 use std::sync::Arc;
-
 use base64::Engine;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
@@ -211,5 +206,12 @@ impl crate::platform_clients::BuildBundle for ZeroSlot {
             txs: txs.to_vec(),
             sender: self,
         }
+    }
+}
+
+
+impl std::fmt::Display for ZeroSlot {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "ZeroSlot")
     }
 }

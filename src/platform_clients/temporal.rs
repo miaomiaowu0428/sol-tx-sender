@@ -1,9 +1,9 @@
-impl Temporal {
-    pub fn display() -> &'static str {
-        "Temporal"
+use std::fmt;
+impl fmt::Display for Temporal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Temporal")
     }
 }
-
 use std::sync::Arc;
 
 use base64::Engine;

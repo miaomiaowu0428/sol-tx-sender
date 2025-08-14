@@ -1,6 +1,7 @@
-impl NodeOne {
-    pub fn display() -> &'static str {
-        "NodeOne"
+use std::fmt;
+impl fmt::Display for NodeOne {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "NodeOne")
     }
 }
 

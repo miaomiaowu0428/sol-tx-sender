@@ -1,6 +1,7 @@
-impl Jito {
-    pub fn display() -> &'static str {
-        "Jito"
+use std::fmt;
+impl fmt::Display for Jito {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Jito")
     }
 }
 

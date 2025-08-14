@@ -1,6 +1,7 @@
-impl Blockrazor {
-    pub fn display() -> &'static str {
-        "Blockrazor"
+use std::fmt;
+impl fmt::Display for Blockrazor {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Blockrazor")
     }
 }
 use std::sync::Arc;

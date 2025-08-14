@@ -1,6 +1,7 @@
-impl Helius {
-    pub fn display() -> &'static str {
-        "Helius"
+use std::fmt;
+impl fmt::Display for Helius {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Helius")
     }
 }
 
