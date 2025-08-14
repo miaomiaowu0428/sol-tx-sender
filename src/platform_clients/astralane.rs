@@ -4,18 +4,18 @@ impl fmt::Display for Astralane {
         write!(f, "Astralane")
     }
 }
-use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::Region;
 use base64::Engine;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
 use serde_json::json;
-use solana_sdk::{
-    signature::Signature,
-    transaction::Transaction,
-};
-use solana_sdk::{pubkey, pubkey::Pubkey};
 use std::sync::Arc;
+
+use solana_sdk::{signature::Signature, transaction::Transaction};
+
+use solana_sdk::{pubkey, pubkey::Pubkey};
+
+use crate::constants::{HTTP_CLIENT, REGION};
+use crate::platform_clients::Region;
 
 pub const ASTRALANE_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("astrazznxsGUhWShqgNtAdfrzP2G83DzcWVJDxwV9bF"),

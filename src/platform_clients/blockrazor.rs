@@ -3,27 +3,18 @@ impl fmt::Display for Blockrazor {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Blockrazor")
     }
-}
-use std::sync::Arc;
-
-use base64::Engine;
+}use base64::Engine;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
 use serde_json::json;
-use solana_sdk::compute_budget::ComputeBudgetInstruction;
-use solana_sdk::system_instruction::transfer;
-use solana_sdk::{
-    hash::Hash,
-    instruction::Instruction,
-    signature::{Keypair, Signature},
-    signer::Signer,
-    transaction::Transaction,
-};
+use std::sync::Arc;
+
+use solana_sdk::{signature::Signature, transaction::Transaction};
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{BuildBundle, BuildTx, NonceParam, Region, SendBundle, SendTx};
+use crate::platform_clients::{BuildBundle, BuildTx, Region, SendBundle, SendTx};
 
 const BLOCKRAZOR_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("FjmZZrFvhnqqb9ThCuMVnENaM3JGVuGWNyCAxRJcFpg9"),

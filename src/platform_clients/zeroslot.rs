@@ -1,23 +1,15 @@
-use std::fmt::Display;
-use std::sync::Arc;
 use base64::Engine;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
 use serde_json::json;
-use solana_sdk::compute_budget::ComputeBudgetInstruction;
-use solana_sdk::system_instruction::transfer;
-use solana_sdk::{
-    hash::Hash,
-    instruction::Instruction,
-    signature::{Keypair, Signature},
-    signer::Signer,
-    transaction::Transaction,
-};
+use std::sync::Arc;
+
+use solana_sdk::{signature::Signature, transaction::Transaction};
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{NonceParam, Region};
+use crate::platform_clients::Region;
 
 pub const ZEROSLOT_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("6fQaVhYZA4w3MBSXjJ81Vf6W1EDYeUPXpgVQ6UQyU1Av"),
@@ -189,11 +181,11 @@ impl crate::platform_clients::BuildTx for ZeroSlot {
             .or_else(|| ZEROSLOT_TIP_ACCOUNTS.first())
             .unwrap()
     }
-    
+
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
     }
-    
+
     // 使用默认实现，无需重写 build_tx
 }
 
@@ -208,7 +200,6 @@ impl crate::platform_clients::BuildBundle for ZeroSlot {
         }
     }
 }
-
 
 impl std::fmt::Display for ZeroSlot {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

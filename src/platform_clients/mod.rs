@@ -1,3 +1,10 @@
+use solana_sdk::transaction::Transaction;
+
+use solana_sdk::{
+    message::{ Message, VersionedMessage},
+    transaction::VersionedTransaction,
+};
+use solana_sdk::address_lookup_table::AddressLookupTableAccount;
 use std::fmt::Display;
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,9 +16,8 @@ use solana_sdk::instruction::Instruction;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::{Keypair, Signature};
 use solana_sdk::signer::Signer;
-use solana_sdk::transaction::Transaction;
 
-use crate::constants::{HTTP_CLIENT};
+use crate::constants::HTTP_CLIENT;
 pub mod astralane;
 pub mod blockrazor;
 pub mod helius;
@@ -100,7 +106,11 @@ pub trait BuildTx {
         } else {
             let tip_address = self.get_tip_address();
             let tip_amt = tip.unwrap_or(self.get_min_tip_amount());
-            info!("Build Tx with tip: {} at {}", tip_amt as f64 / 1_000_000_000.0, self);
+            info!(
+                "Build Tx with tip: {} at {}",
+                tip_amt as f64 / 1_000_000_000.0,
+                self
+            );
             let tip_ix =
                 solana_sdk::system_instruction::transfer(&signer.pubkey(), &tip_address, tip_amt);
             instructions.push(tip_ix);
@@ -257,3 +267,78 @@ fn test_region() {
         println!("{}, {:?}", region, Region::from(region));
     }
 }
+
+pub trait BuildV0Tx {
+    fn build_v0_tx(
+        &self,
+        ixs: &[Instruction],
+        signer: &Arc<Keypair>,
+        tip: &Option<u64>,
+        nonce: &NonceParam,
+        cu: &Option<(u32, u64)>,
+        address_lookup_tables: &[AddressLookupTableAccount],
+    ) -> Result<VersionedTransaction, Box<dyn std::error::Error>>
+    where
+        Self: Sync + Send + Sized + Display + SendTx + BuildTx,
+    {
+        use solana_sdk::message::v0::Message as V0Message;
+        use solana_sdk::transaction::VersionedTransaction;
+        use solana_sdk::system_instruction;
+        use solana_sdk::compute_budget::ComputeBudgetInstruction;
+
+
+        let hash = *nonce.hash();
+        let payer = signer.pubkey();
+
+        let mut instructions = Vec::new();
+
+        // nonce advance 指令
+        if let NonceParam::NonceAccount { account, authority, .. } = nonce {
+            let nonce_ix = system_instruction::advance_nonce_account(account, authority);
+            instructions.push(nonce_ix);
+        }
+
+        // cu 指令
+        if let Some((cu_limit, cu_price)) = cu {
+            let limit_instruction = ComputeBudgetInstruction::set_compute_unit_limit(*cu_limit);
+            instructions.push(limit_instruction);
+            let price_instruction = ComputeBudgetInstruction::set_compute_unit_price(*cu_price);
+            instructions.push(price_instruction);
+        }
+
+        // tip 指令
+        if let Some(0) = tip {
+            // 不添加 tip
+        } else {
+            let tip_address = self.get_tip_address();
+            let tip_amt = tip.unwrap_or(self.get_min_tip_amount());
+            info!("Build V0Tx with tip: {} at {}", tip_amt as f64 / 1_000_000_000.0, self);
+            let tip_ix = system_instruction::transfer(&payer, &tip_address, tip_amt);
+            instructions.push(tip_ix);
+        }
+
+        // 用户指令
+        instructions.extend(ixs.iter().cloned());
+
+        let message = V0Message::try_compile(
+            &payer,
+            &instructions,
+            address_lookup_tables,
+            hash,
+        )?;
+        let transaction = VersionedTransaction::try_new(
+            solana_sdk::message::VersionedMessage::V0(message),
+            &[signer.as_ref()],
+        )?;
+        Ok(transaction)
+    }
+}
+
+// 各平台 BuildV0Tx 实现
+impl BuildV0Tx for astralane::Astralane {}
+impl BuildV0Tx for blockrazor::Blockrazor {}
+impl BuildV0Tx for helius::Helius {}
+impl BuildV0Tx for jito::Jito {}
+impl BuildV0Tx for nodeone::NodeOne {}
+impl BuildV0Tx for temporal::Temporal {}
+impl BuildV0Tx for zeroslot::ZeroSlot {}

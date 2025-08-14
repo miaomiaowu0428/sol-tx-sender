@@ -1,30 +1,16 @@
-use std::fmt;
-impl fmt::Display for Temporal {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Temporal")
-    }
-}
-use std::sync::Arc;
-
 use base64::Engine;
 use log::info;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
 use serde_json::json;
-use solana_sdk::compute_budget::ComputeBudgetInstruction;
-use solana_sdk::system_instruction::transfer;
-use solana_sdk::{
-    hash::Hash,
-    instruction::Instruction,
-    signature::{Keypair, Signature},
-    signer::Signer,
-    transaction::Transaction,
-};
+use std::sync::Arc;
+
+use solana_sdk::{signature::Signature, transaction::Transaction};
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{NonceParam, Region};
+use crate::platform_clients::Region;
 
 pub const TEMPORAL_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("TEMPaMeCRFAS9EKF53Jd6KpHxgL47uWLcpFArU1Fanq"),

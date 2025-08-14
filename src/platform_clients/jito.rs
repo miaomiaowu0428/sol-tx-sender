@@ -4,28 +4,18 @@ impl fmt::Display for Jito {
         write!(f, "Jito")
     }
 }
-
-use std::sync::Arc;
-
 use base64::Engine;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
 use serde_json::json;
-use solana_sdk::{
-    compute_budget::ComputeBudgetInstruction,
-    hash::Hash,
-    instruction::Instruction,
-    signature::{Keypair, Signature},
-    signer::Signer,
-    system_instruction::transfer,
-    transaction::Transaction,
-};
+use std::sync::Arc;
+
+use solana_sdk::{signature::Signature, transaction::Transaction};
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
-use crate::{constants::{HTTP_CLIENT, REGION}, platform_clients::NonceParam};
+use crate::constants::{HTTP_CLIENT, REGION};
 use crate::platform_clients::Region;
-
 pub const JITO_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5"),
     pubkey!("HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe"),
