@@ -1,7 +1,7 @@
 use std::fmt::Display;
 use std::sync::Arc;
-use std::thread::sleep;
 use std::time::Duration;
+use tokio::time::sleep;
 
 use log::info;
 use solana_sdk::hash::Hash;
@@ -234,8 +234,8 @@ pub async fn endpoint_keep_alive() {
                 }
             }
         }
-        // 等待 60 秒
-        sleep(Duration::from_secs(60));
+        sleep(Duration::from_secs(60)).await;
+        tokio::sleep(Duration::from_secs(60)).await;
     }
 }
 
