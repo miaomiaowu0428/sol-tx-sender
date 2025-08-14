@@ -1,3 +1,23 @@
+// 通用交易枚举
+pub enum SolTx {
+    Legacy(Transaction),
+    V0(VersionedTransaction),
+}
+
+impl SolTx {
+    pub fn to_base64(&self) -> Result<String, Box<dyn std::error::Error>> {
+        match self {
+            SolTx::Legacy(tx) => {
+                let data = bincode::serialize(tx)?;
+                Ok(base64::encode(data))
+            }
+            SolTx::V0(v0tx) => {
+                let data = bincode::serialize(v0tx)?;
+                Ok(base64::encode(data))
+            }
+        }
+    }
+}
 use solana_sdk::transaction::Transaction;
 
 use solana_sdk::{
@@ -45,8 +65,9 @@ impl NonceParam {
 }
 // 单笔交易发送 trait
 #[async_trait::async_trait]
-pub trait SendTx: Sync + Send {
-    async fn send_tx(&self, tx: &Transaction) -> Result<Signature, String>;
+pub trait SendTxEncoded: Sync + Send {
+    /// 发送 base64 编码后的交易
+    async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String>;
 }
 
 // 批量交易发送 trait
@@ -71,7 +92,7 @@ pub trait BuildTx {
         cu: &Option<(u32, u64)>,
     ) -> TxEnvelope<'a, Self>
     where
-        Self: SendTx + Sync + Send + Sized + Display,
+        Self: SendTxEncoded + Sync + Send + Sized + Display,
     {
         let mut instructions = Vec::new();
 
@@ -138,12 +159,12 @@ pub trait BuildBundle {
 }
 
 // 单笔 envelope
-pub struct TxEnvelope<'a, T: SendTx + Sync + Send + 'a> {
+pub struct TxEnvelope<'a, T: SendTxEncoded + Sync + Send + 'a> {
     pub tx: Transaction,
     pub sender: &'a T,
 }
 
-impl<'a, T: SendTx + Sync + Send + 'a> TxEnvelope<'a, T> {
+impl<'a, T: SendTxEncoded + Sync + Send + 'a> TxEnvelope<'a, T> {
     pub fn tx(self) -> Transaction {
         self.tx
     }
@@ -156,9 +177,12 @@ pub trait TxSend: Send + Sync {
 }
 
 #[async_trait::async_trait]
-impl<'a, T: SendTx + Sync + Send + 'a> TxSend for TxEnvelope<'a, T> {
+impl<'a, T: SendTxEncoded + Sync + Send + 'a> TxSend for TxEnvelope<'a, T> {
     async fn send(&self) -> Result<Signature, String> {
-        self.sender.send_tx(&self.tx).await
+        let soltx = SolTx::Legacy(self.tx.clone());
+        let b64 = soltx.to_base64().map_err(|e| e.to_string())?;
+        self.sender.send_tx_encoded(&b64).await;
+        Ok(self.tx.signatures[0])
     }
     fn sig(&self) -> Signature {
         self.tx.signatures[0]
@@ -286,9 +310,12 @@ pub trait V0TxSend: Send + Sync {
 }
 
 #[async_trait::async_trait]
-impl<'a, T: BuildV0Tx + SendTx + Sync + Send + ?Sized> V0TxSend for V0TxEnvelope<'a, T> {
+impl<'a, T: BuildV0Tx + SendTxEncoded + Sync + Send + ?Sized> V0TxSend for V0TxEnvelope<'a, T> {
     async fn send(&self) -> Result<Signature, String> {
-        self.sender.send_tx(&self.tx).await
+        let soltx = SolTx::V0(self.tx.clone());
+        let b64 = soltx.to_base64().map_err(|e| e.to_string())?;
+        self.sender.send_tx_encoded(&b64).await;
+        Ok(self.tx.signatures[0])
     }
     fn sig(&self) -> Signature {
         self.tx.signatures[0]
@@ -306,7 +333,7 @@ pub trait BuildV0Tx {
         address_lookup_tables: &[AddressLookupTableAccount],
     ) -> Result<V0TxEnvelope<'a, Self>, Box<dyn std::error::Error>>
     where
-        Self: Sync + Send + Sized + Display + SendTx + BuildTx,
+        Self: Sync + Send + Sized + Display + SendTxEncoded + BuildTx,
     {
         use solana_sdk::message::v0::Message as V0Message;
         use solana_sdk::transaction::VersionedTransaction;

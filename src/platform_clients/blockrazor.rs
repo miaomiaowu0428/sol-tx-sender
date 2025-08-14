@@ -14,7 +14,7 @@ use solana_sdk::{signature::Signature, transaction::Transaction};
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{BuildBundle, BuildTx, Region, SendBundle, SendTx};
+use crate::platform_clients::{BuildBundle, BuildTx, Region, SendBundle, SendTxEncoded};
 
 const BLOCKRAZOR_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("FjmZZrFvhnqqb9ThCuMVnENaM3JGVuGWNyCAxRJcFpg9"),
@@ -102,19 +102,15 @@ fn read_auth_token_from_env() -> String {
 // 新模式实现
 
 #[async_trait::async_trait]
-impl SendTx for Blockrazor {
-    async fn send_tx(&self, tx: &Transaction) -> Result<Signature, String> {
-        let encode_txs = match bincode::serialize(tx) {
-            Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
-            Err(e) => return Err(format!("bincode serialize error: {}", e)),
-        };
+impl SendTxEncoded for Blockrazor {
+    async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let res = self
             .http_client
             .post(&self.endpoint)
             .header("Content-Type", "application/json")
             .header("apikey", self.auth_token.as_str())
             .json(&json!({
-                "transaction": encode_txs,
+                "transaction": tx_base64,
                 "mode": "fast"
             }))
             .send()
@@ -130,7 +126,7 @@ impl SendTx for Blockrazor {
             }
         };
         log::info!("{:?}", response);
-        Ok(tx.signatures[0])
+        Ok(())
     }
 }
 

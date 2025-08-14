@@ -82,12 +82,8 @@ impl NodeOne {
 }
 
 #[async_trait::async_trait]
-impl crate::platform_clients::SendTx for NodeOne {
-    async fn send_tx(&self, tx: &Transaction) -> Result<Signature, String> {
-        let encode_txs = match bincode::serialize(tx) {
-            Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
-            Err(e) => return Err(format!("bincode serialize error: {}", e)),
-        };
+impl crate::platform_clients::SendTxEncoded for NodeOne {
+    async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let res = self
             .http_client
             .post(&self.endpoint)
@@ -97,7 +93,7 @@ impl crate::platform_clients::SendTx for NodeOne {
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "sendTransaction",
-                "params": [encode_txs],
+                "params": [tx_base64],
             }))
             .send()
             .await;
@@ -112,7 +108,7 @@ impl crate::platform_clients::SendTx for NodeOne {
             }
         };
         info!("node1: {}", response);
-        Ok(tx.signatures[0])
+        Ok(())
     }
 }
 

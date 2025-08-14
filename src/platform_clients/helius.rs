@@ -5,6 +5,7 @@ impl fmt::Display for Helius {
     }
 }
 use base64::Engine;
+use log::info;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
 use serde_json::json;
@@ -95,12 +96,8 @@ impl Helius {
 }
 
 #[async_trait::async_trait]
-impl crate::platform_clients::SendTx for Helius {
-    async fn send_tx(&self, tx: &Transaction) -> Result<Signature, String> {
-        let encode_txs = match bincode::serialize(tx) {
-            Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
-            Err(e) => return Err(format!("bincode serialize error: {}", e)),
-        };
+impl crate::platform_clients::SendTxEncoded for Helius {
+    async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let res = self
             .http_client
             .post(&self.endpoint)
@@ -111,7 +108,7 @@ impl crate::platform_clients::SendTx for Helius {
                 "jsonrpc": "2.0",
                 "method": "sendTransaction",
                 "params": [
-                    encode_txs,
+                    tx_base64,
                     {
                         "encoding": "base64",
                         "skipPreflight": true,
@@ -131,8 +128,8 @@ impl crate::platform_clients::SendTx for Helius {
                 return Err(format!("send error: {}", e));
             }
         };
-        log::info!("{:?}", response);
-        Ok(tx.signatures[0])
+        info!("helius: {}", response);
+        Ok(())
     }
 }
 

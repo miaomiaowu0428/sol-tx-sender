@@ -87,18 +87,15 @@ impl Jito {
 }
 
 #[async_trait::async_trait]
-impl crate::platform_clients::SendTx for Jito {
-    async fn send_tx(&self, tx: &Transaction) -> Result<Signature, String> {
-        let encode_txs = match bincode::serialize(tx) {
-            Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
-            Err(e) => return Err(format!("bincode serialize error: {}", e)),
-        };
+impl crate::platform_clients::SendTxEncoded for Jito {
+    /// 直接接收 base64 编码后的交易数据并发送
+    async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let request_body = match serde_json::to_string(&json!({
             "id": 1,
             "jsonrpc": "2.0",
             "method": "sendTransaction",
             "params": [
-                encode_txs,
+                tx_base64,
                 { "encoding": "base64" }
             ]
         })) {
@@ -124,7 +121,7 @@ impl crate::platform_clients::SendTx for Jito {
             }
         };
         log::info!("jito response: {:?}", response);
-        Ok(tx.signatures[0])
+        Ok(())
     }
 }
 
@@ -178,11 +175,11 @@ impl crate::platform_clients::BuildTx for Jito {
     fn get_tip_address(&self) -> Pubkey {
         Self::get_tip_address()
     }
-    
+
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
     }
-    
+
     // 使用默认实现，无需重写 build_tx
 }
 

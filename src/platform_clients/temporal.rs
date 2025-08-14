@@ -85,13 +85,8 @@ impl Temporal {
 }
 
 #[async_trait::async_trait]
-#[async_trait::async_trait]
-impl crate::platform_clients::SendTx for Temporal {
-    async fn send_tx(&self, tx: &Transaction) -> Result<Signature, String> {
-        let encode_txs = match bincode::serialize(tx) {
-            Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
-            Err(e) => return Err(format!("bincode serialize error: {}", e)),
-        };
+impl crate::platform_clients::SendTxEncoded for Temporal {
+    async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let mut url = String::with_capacity(self.endpoint.len() + self.token.len() + 20);
         url.push_str(&self.endpoint);
         url.push_str("?c=");
@@ -105,7 +100,7 @@ impl crate::platform_clients::SendTx for Temporal {
                 "id": 1,
                 "method": "sendTransaction",
                 "params": [
-                    encode_txs,
+                    tx_base64,
                     {
                         "encoding": "base64",
                         "skipPreflight": true,
@@ -125,7 +120,7 @@ impl crate::platform_clients::SendTx for Temporal {
             }
         };
         info!("temporal: {}", response);
-        Ok(tx.signatures[0])
+        Ok(())
     }
 }
 
