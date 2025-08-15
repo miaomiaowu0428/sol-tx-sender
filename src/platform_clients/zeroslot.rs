@@ -28,7 +28,7 @@ pub const ZEROSLOT_TIP_ACCOUNTS: &[Pubkey] = &[
 
 pub const ZEROSLOT_ENDPOINT: &[&str] = &[
     "https://ny.0slot.trade",  // NewYork
-    "https://de.0slot.trade",  // Frankfurt
+    "https://de1.0slot.trade",  // Frankfurt
     "https://ams.0slot.trade", // Amsterdam
     "https://jp.0slot.trade",  // Tokyo
     "https://la.0slot.trade",  // LosAngeles
