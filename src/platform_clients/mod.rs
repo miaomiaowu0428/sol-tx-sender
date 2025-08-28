@@ -75,8 +75,9 @@ impl std::fmt::Display for Platform {
 }
 
 /// 交易小费与 CU 相关信息
-#[derive(Debug, Clone, Copy)]
-pub struct TxTipDetail {
+#[derive(Debug, Clone)]
+pub struct DetailedTx {
+    pub tx: Transaction,
     pub platform: Platform,
     pub tip: Option<u64>,
     pub cu_limit: Option<u32>,
@@ -196,8 +197,8 @@ pub trait BuildTx {
         );
 
         TxEnvelope {
-            tx,
-            tip_details: TxTipDetail {
+            tx: DetailedTx {
+                tx,
                 platform: self.platform(),
                 tip: *tip,
                 cu_limit: cu.0,
@@ -219,19 +220,18 @@ pub trait BuildBundle {
 // 单笔 envelope
 /// 单笔交易 envelope，包含交易体、tip 信息和发送者
 pub struct TxEnvelope<'a, T: SendTxEncoded + Sync + Send + 'a> {
-    pub tx: Transaction,
-    pub tip_details: TxTipDetail,
+    pub tx: DetailedTx,
     pub sender: &'a T,
 }
 
 impl<'a, T: SendTxEncoded + Sync + Send + 'a> TxEnvelope<'a, T> {
     /// 获取交易体（消耗 envelope）
-    pub fn tx(self) -> Transaction {
-        self.tx
+    pub fn inner_tx(&self) -> &Transaction {
+        &self.tx.tx
     }
     /// 获取 tip 相关信息
-    pub fn tip_details(&self) -> &TxTipDetail {
-        &self.tip_details
+    pub fn tx(&self) -> &DetailedTx {
+        &self.tx
     }
 }
 
@@ -246,13 +246,13 @@ pub trait TxSend: Send + Sync {
 #[async_trait::async_trait]
 impl<'a, T: SendTxEncoded + Sync + Send + 'a> TxSend for TxEnvelope<'a, T> {
     async fn send(&self) -> Result<Signature, String> {
-        let soltx = SolTx::Legacy(self.tx.clone());
+        let soltx = SolTx::Legacy(self.inner_tx().clone());
         let b64 = soltx.to_base64().map_err(|e| e.to_string())?;
         let _ = self.sender.send_tx_encoded(&b64).await;
-        Ok(self.tx.signatures[0])
+        Ok(self.inner_tx().signatures[0])
     }
     fn sig(&self) -> Signature {
-        self.tx.signatures[0]
+        self.inner_tx().signatures[0]
     }
 }
 
