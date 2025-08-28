@@ -17,7 +17,7 @@ use solana_sdk::{signature::Signature, transaction::Transaction};
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::Region;
+use crate::platform_clients::{Platform, Region};
 
 pub const NODEONE_TIP_ACCOUNTS: &[Pubkey] = &[
     // pubkey!("node1PqAa3BWWzUnTHVbw8NJHC874zn9ngAkXjgWEej"),
@@ -157,6 +157,9 @@ impl crate::platform_clients::BuildTx for NodeOne {
             .choose(&mut rand::rng())
             .or_else(|| NODEONE_TIP_ACCOUNTS.first())
             .unwrap()
+    }
+    fn platform(&self) -> Platform {
+        Platform::Nodeone
     }
     
     fn get_min_tip_amount(&self) -> u64 {

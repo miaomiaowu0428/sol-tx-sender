@@ -10,7 +10,7 @@ use solana_sdk::{signature::Signature, transaction::Transaction};
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::Region;
+use crate::platform_clients::{Platform, Region};
 
 pub const ZEROSLOT_TIP_ACCOUNTS: &[Pubkey] = &[
     // pubkey!("6fQaVhYZA4w3MBSXjJ81Vf6W1EDYeUPXpgVQ6UQyU1Av"),
@@ -28,7 +28,7 @@ pub const ZEROSLOT_TIP_ACCOUNTS: &[Pubkey] = &[
 
 pub const ZEROSLOT_ENDPOINT: &[&str] = &[
     "https://ny.0slot.trade",  // NewYork
-    "https://de1.0slot.trade",  // Frankfurt
+    "https://de1.0slot.trade", // Frankfurt
     "https://ams.0slot.trade", // Amsterdam
     "https://jp.0slot.trade",  // Tokyo
     "https://la.0slot.trade",  // LosAngeles
@@ -178,7 +178,9 @@ impl crate::platform_clients::BuildTx for ZeroSlot {
             .or_else(|| ZEROSLOT_TIP_ACCOUNTS.first())
             .unwrap()
     }
-
+    fn platform(&self) -> Platform {
+        Platform::Zeroslot
+    }
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
     }

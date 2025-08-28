@@ -14,7 +14,7 @@ use solana_sdk::{signature::Signature, transaction::Transaction};
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{BuildBundle, BuildTx, Region, SendBundle, SendTxEncoded};
+use crate::platform_clients::{BuildBundle, BuildTx, Platform, Region, SendBundle, SendTxEncoded};
 
 const BLOCKRAZOR_TIP_ACCOUNTS: &[Pubkey] = &[
     // pubkey!("FjmZZrFvhnqqb9ThCuMVnENaM3JGVuGWNyCAxRJcFpg9"),
@@ -141,7 +141,9 @@ impl BuildTx for Blockrazor {
     fn get_tip_address(&self) -> Pubkey {
         self.get_tip_address()
     }
-
+    fn platform(&self) -> Platform {
+        Platform::Blockrazor
+    }
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
     }

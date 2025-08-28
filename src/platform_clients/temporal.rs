@@ -10,7 +10,7 @@ use solana_sdk::{signature::Signature, transaction::Transaction};
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::Region;
+use crate::platform_clients::{Platform, Region};
 
 pub const TEMPORAL_TIP_ACCOUNTS: &[Pubkey] = &[
     // pubkey!("TEMPaMeCRFAS9EKF53Jd6KpHxgL47uWLcpFArU1Fanq"),
@@ -179,11 +179,14 @@ impl crate::platform_clients::BuildTx for Temporal {
             .or_else(|| TEMPORAL_TIP_ACCOUNTS.first())
             .unwrap()
     }
-    
+    fn platform(&self) -> Platform {
+        Platform::Temporal
+    }
+
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
     }
-    
+
     // 使用默认实现，无需重写 build_tx
 }
 

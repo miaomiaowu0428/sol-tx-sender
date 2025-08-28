@@ -1,11 +1,7 @@
-
 use solana_sdk::transaction::Transaction;
 
-use solana_sdk::{
-    message::{ Message, VersionedMessage},
-    transaction::VersionedTransaction,
-};
 use solana_sdk::address_lookup_table::AddressLookupTableAccount;
+use solana_sdk::transaction::VersionedTransaction;
 use std::fmt::Display;
 use std::sync::Arc;
 use std::time::Duration;
@@ -27,14 +23,15 @@ pub mod nodeone;
 pub mod temporal;
 pub mod zeroslot;
 
-
 // 通用交易枚举
+/// 通用交易类型，兼容 Legacy 和 V0 版本
 pub enum SolTx {
     Legacy(Transaction),
     V0(VersionedTransaction),
 }
 
 impl SolTx {
+    /// 将交易序列化为 base64 字符串
     pub fn to_base64(&self) -> Result<String, Box<dyn std::error::Error>> {
         match self {
             SolTx::Legacy(tx) => {
@@ -49,11 +46,46 @@ impl SolTx {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 支持的平台类型
+pub enum Platform {
+    Astralane,
+    Blockrazor,
+    Helius,
+    Jito,
+    Nodeone,
+    Temporal,
+    Zeroslot,
+}
 
+/// 平台枚举的字符串展示实现
+impl std::fmt::Display for Platform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            Platform::Astralane => "Astralane",
+            Platform::Blockrazor => "Blockrazor",
+            Platform::Helius => "Helius",
+            Platform::Jito => "Jito",
+            Platform::Nodeone => "Nodeone",
+            Platform::Temporal => "Temporal",
+            Platform::Zeroslot => "Zeroslot",
+        };
+        write!(f, "{}", name)
+    }
+}
 
+/// 交易小费与 CU 相关信息
+#[derive(Debug, Clone, Copy)]
+pub struct TxTipDetail {
+    pub platform: Platform,
+    pub tip: Option<u64>,
+    pub cu_limit: Option<u32>,
+    pub cu_price: Option<u64>,
+}
 
 // 交易组装 trait
-pub enum NonceParam {
+/// 交易哈希参数，支持普通 blockhash 和 nonce account
+pub enum HashParam {
     Blockhash(Hash),
     NonceAccount {
         account: Pubkey,
@@ -61,15 +93,17 @@ pub enum NonceParam {
         hash: Hash,
     },
 }
-impl NonceParam {
+impl HashParam {
+    /// 获取当前哈希值
     fn hash(&self) -> &Hash {
         match self {
-            NonceParam::Blockhash(hash) => hash,
-            NonceParam::NonceAccount { hash, .. } => hash,
+            HashParam::Blockhash(hash) => hash,
+            HashParam::NonceAccount { hash, .. } => hash,
         }
     }
 }
 // 单笔交易发送 trait
+/// 单笔交易发送 trait，发送 base64 编码后的交易
 #[async_trait::async_trait]
 pub trait SendTxEncoded: Sync + Send {
     /// 发送 base64 编码后的交易
@@ -77,24 +111,28 @@ pub trait SendTxEncoded: Sync + Send {
 }
 
 // 批量交易发送 trait
+/// 批量交易发送 trait
 #[async_trait::async_trait]
 pub trait SendBundle: Sync + Send {
     async fn send_bundle(&self, txs: &[Transaction]) -> Result<Vec<Signature>, String>;
 }
 
 // 单笔交易组装 trait
+/// 单笔交易组装 trait，各平台需实现相关方法
 pub trait BuildTx {
     // 需要各平台实现的方法
     fn get_tip_address(&self) -> Pubkey;
     fn get_min_tip_amount(&self) -> u64;
+    fn platform(&self) -> Platform;
 
     // 默认实现
+    /// 默认交易组装实现，支持 tip、cu、nonce 等参数
     fn build_tx<'a>(
         &'a self,
         ixs: &[Instruction],
         signer: &Arc<Keypair>,
         tip: &Option<u64>,
-        nonce: &NonceParam,
+        nonce: &HashParam,
         cu: &(Option<u32>, Option<u64>),
     ) -> TxEnvelope<'a, Self>
     where
@@ -104,8 +142,8 @@ pub trait BuildTx {
 
         // nonce 指令
         match nonce {
-            NonceParam::Blockhash(_) => {}
-            NonceParam::NonceAccount {
+            HashParam::Blockhash(_) => {}
+            HashParam::NonceAccount {
                 account, authority, ..
             } => {
                 let nonce_ix =
@@ -117,15 +155,18 @@ pub trait BuildTx {
         // cu 指令（某些平台要求在 tip 之前）
         if let Some(cu_limit) = cu.0 {
             let limit_instruction =
-                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(cu_limit);
+                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(
+                    cu_limit,
+                );
             instructions.push(limit_instruction);
         }
         if let Some(cu_price) = cu.1 {
             let price_instruction =
-                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(cu_price);
+                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(
+                    cu_price,
+                );
             instructions.push(price_instruction);
         }
-
 
         // tip 转账
         if let Some(0) = tip {
@@ -136,7 +177,8 @@ pub trait BuildTx {
             info!(
                 "Build Tx with tip: {} at {} tip address: {}",
                 tip_amt as f64 / 1_000_000_000.0,
-                self, tip_address
+                self,
+                tip_address
             );
             let tip_ix =
                 solana_sdk::system_instruction::transfer(&signer.pubkey(), &tip_address, tip_amt);
@@ -153,11 +195,21 @@ pub trait BuildTx {
             *nonce.hash(),
         );
 
-        TxEnvelope { tx, sender: self }
+        TxEnvelope {
+            tx,
+            tip_details: TxTipDetail {
+                platform: self.platform(),
+                tip: *tip,
+                cu_limit: cu.0,
+                cu_price: cu.1,
+            },
+            sender: self,
+        }
     }
 }
 
 // 批量交易组装 trait
+/// 批量交易组装 trait
 pub trait BuildBundle {
     fn build_bundle<'a>(&'a self, txs: &[Transaction]) -> BundleEnvelope<'a, Self>
     where
@@ -165,29 +217,38 @@ pub trait BuildBundle {
 }
 
 // 单笔 envelope
+/// 单笔交易 envelope，包含交易体、tip 信息和发送者
 pub struct TxEnvelope<'a, T: SendTxEncoded + Sync + Send + 'a> {
     pub tx: Transaction,
+    pub tip_details: TxTipDetail,
     pub sender: &'a T,
 }
 
 impl<'a, T: SendTxEncoded + Sync + Send + 'a> TxEnvelope<'a, T> {
+    /// 获取交易体（消耗 envelope）
     pub fn tx(self) -> Transaction {
         self.tx
     }
+    /// 获取 tip 相关信息
+    pub fn tip_details(&self) -> &TxTipDetail {
+        &self.tip_details
+    }
 }
 
+/// 单笔交易发送 trait，异步发送并返回签名
 #[async_trait::async_trait]
 pub trait TxSend: Send + Sync {
     async fn send(&self) -> Result<Signature, String>;
     fn sig(&self) -> Signature;
 }
 
+/// TxEnvelope 的发送实现
 #[async_trait::async_trait]
 impl<'a, T: SendTxEncoded + Sync + Send + 'a> TxSend for TxEnvelope<'a, T> {
     async fn send(&self) -> Result<Signature, String> {
         let soltx = SolTx::Legacy(self.tx.clone());
         let b64 = soltx.to_base64().map_err(|e| e.to_string())?;
-        self.sender.send_tx_encoded(&b64).await;
+        let _ = self.sender.send_tx_encoded(&b64).await;
         Ok(self.tx.signatures[0])
     }
     fn sig(&self) -> Signature {
@@ -196,22 +257,26 @@ impl<'a, T: SendTxEncoded + Sync + Send + 'a> TxSend for TxEnvelope<'a, T> {
 }
 
 // 批量 envelope
+/// 批量交易 envelope，包含多笔交易和发送者
 pub struct BundleEnvelope<'a, T: SendBundle + Sync + Send + 'a> {
     pub txs: Vec<Transaction>,
     pub sender: &'a T,
 }
 
 impl<'a, T: SendBundle + Sync + Send + 'a> BundleEnvelope<'a, T> {
+    /// 获取所有交易的签名
     pub fn sigs(&self) -> Vec<Signature> {
         self.txs.iter().map(|tx| tx.signatures[0]).collect()
     }
 }
 
+/// 批量交易发送 trait
 #[async_trait::async_trait]
 pub trait BundleSend {
     async fn send_bundle(&self) -> Result<Vec<Signature>, String>;
 }
 
+/// BundleEnvelope 的批量发送实现
 #[async_trait::async_trait]
 impl<'a, T: SendBundle + Sync + Send + 'a> BundleSend for BundleEnvelope<'a, T> {
     async fn send_bundle(&self) -> Result<Vec<Signature>, String> {
@@ -220,6 +285,7 @@ impl<'a, T: SendBundle + Sync + Send + 'a> BundleSend for BundleEnvelope<'a, T> 
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
+/// 区域枚举
 pub enum Region {
     NewYork,
     Frankfurt,
@@ -233,6 +299,7 @@ pub enum Region {
     Unknown,
 }
 
+/// 字符串转 Region 枚举实现
 impl<T: AsRef<str>> From<T> for Region {
     fn from(value: T) -> Self {
         match value.as_ref() {
@@ -250,6 +317,7 @@ impl<T: AsRef<str>> From<T> for Region {
     }
 }
 
+/// 各平台 endpoint 保活定时任务
 pub async fn endpoint_keep_alive() {
     let client: Arc<reqwest::Client> = HTTP_CLIENT.clone();
     let urls = vec![
@@ -298,29 +366,33 @@ fn test_region() {
     }
 }
 
+/// V0 交易 envelope，包含 V0 交易体和发送者
 pub struct V0TxEnvelope<'a, T: BuildV0Tx + Sync + Send + ?Sized> {
     pub tx: VersionedTransaction,
     pub sender: &'a T,
 }
 
 impl<'a, T: BuildV0Tx + Sync + Send + ?Sized> V0TxEnvelope<'a, T> {
+    /// 获取 V0 交易体（消耗 envelope）
     pub fn tx(self) -> VersionedTransaction {
         self.tx
     }
 }
 
+/// V0 交易发送 trait，异步发送并返回签名
 #[async_trait::async_trait]
 pub trait V0TxSend: Send + Sync {
     async fn send(&self) -> Result<Signature, String>;
     fn sig(&self) -> Signature;
 }
 
+/// V0TxEnvelope 的发送实现
 #[async_trait::async_trait]
 impl<'a, T: BuildV0Tx + SendTxEncoded + Sync + Send + ?Sized> V0TxSend for V0TxEnvelope<'a, T> {
     async fn send(&self) -> Result<Signature, String> {
         let soltx = SolTx::V0(self.tx.clone());
         let b64 = soltx.to_base64().map_err(|e| e.to_string())?;
-        self.sender.send_tx_encoded(&b64).await;
+        let _ = self.sender.send_tx_encoded(&b64).await;
         Ok(self.tx.signatures[0])
     }
     fn sig(&self) -> Signature {
@@ -328,13 +400,15 @@ impl<'a, T: BuildV0Tx + SendTxEncoded + Sync + Send + ?Sized> V0TxSend for V0TxE
     }
 }
 
+/// V0 交易组装 trait，直接使用默认实现即可
 pub trait BuildV0Tx {
+    /// 默认 V0 交易组装实现，支持 tip、cu、nonce、lookup table 等参数
     fn build_v0_tx<'a>(
         &'a self,
         ixs: &[Instruction],
         signer: &Arc<Keypair>,
         tip: &Option<u64>,
-        nonce: &NonceParam,
+        nonce: &HashParam,
         cu: &(Option<u32>, Option<u64>),
         address_lookup_tables: &[AddressLookupTableAccount],
     ) -> Result<V0TxEnvelope<'a, Self>, Box<dyn std::error::Error>>
@@ -342,16 +416,18 @@ pub trait BuildV0Tx {
         Self: Sync + Send + Sized + Display + SendTxEncoded + BuildTx,
     {
         use solana_sdk::message::v0::Message as V0Message;
-        use solana_sdk::transaction::VersionedTransaction;
         use solana_sdk::system_instruction;
-        use solana_sdk::compute_budget::ComputeBudgetInstruction;
+        use solana_sdk::transaction::VersionedTransaction;
 
         let hash = *nonce.hash();
         let payer = signer.pubkey();
         let mut instructions = Vec::new();
 
         // nonce advance 指令
-        if let NonceParam::NonceAccount { account, authority, .. } = nonce {
+        if let HashParam::NonceAccount {
+            account, authority, ..
+        } = nonce
+        {
             let nonce_ix = system_instruction::advance_nonce_account(account, authority);
             instructions.push(nonce_ix);
         }
@@ -359,12 +435,16 @@ pub trait BuildV0Tx {
         // cu 指令
         if let Some(cu_limit) = cu.0 {
             let limit_instruction =
-                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(cu_limit);
+                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(
+                    cu_limit,
+                );
             instructions.push(limit_instruction);
         }
         if let Some(cu_price) = cu.1 {
             let price_instruction =
-                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(cu_price);
+                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(
+                    cu_price,
+                );
             instructions.push(price_instruction);
         }
 
@@ -374,7 +454,12 @@ pub trait BuildV0Tx {
         } else {
             let tip_address = self.get_tip_address();
             let tip_amt = tip.unwrap_or(self.get_min_tip_amount());
-            info!("Build V0Tx with tip: {}({tip_amt}lamports) at {} tip address: {}", tip_amt as f64 / 1_000_000_000.0, self, tip_address);
+            info!(
+                "Build V0Tx with tip: {}({tip_amt}lamports) at {} tip address: {}",
+                tip_amt as f64 / 1_000_000_000.0,
+                self,
+                tip_address
+            );
             let tip_ix = system_instruction::transfer(&payer, &tip_address, tip_amt);
             instructions.push(tip_ix);
         }
@@ -382,17 +467,15 @@ pub trait BuildV0Tx {
         // 用户指令
         instructions.extend(ixs.iter().cloned());
 
-        let message = V0Message::try_compile(
-            &payer,
-            &instructions,
-            address_lookup_tables,
-            hash,
-        )?;
+        let message = V0Message::try_compile(&payer, &instructions, address_lookup_tables, hash)?;
         let transaction = VersionedTransaction::try_new(
             solana_sdk::message::VersionedMessage::V0(message),
             &[signer.as_ref()],
         )?;
-        Ok(V0TxEnvelope { tx: transaction, sender: self })
+        Ok(V0TxEnvelope {
+            tx: transaction,
+            sender: self,
+        })
     }
 }
 

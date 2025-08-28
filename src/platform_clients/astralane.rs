@@ -15,7 +15,7 @@ use solana_sdk::{signature::Signature, transaction::Transaction};
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::Region;
+use crate::platform_clients::{Platform, Region};
 
 pub const ASTRALANE_TIP_ACCOUNTS: &[Pubkey] = &[
     // pubkey!("astrazznxsGUhWShqgNtAdfrzP2G83DzcWVJDxwV9bF"),
@@ -33,7 +33,7 @@ pub const ASTRALANE_ENDPOINTS: &[&str] = &[
 ];
 
 pub struct Astralane {
-    pub endpoint: String, // 只保存基础 endpoint，不拼 key
+    pub endpoint: String,   // 只保存基础 endpoint，不拼 key
     pub auth_token: String, // 单独保存 key
     pub http_client: Arc<Client>,
 }
@@ -172,17 +172,20 @@ impl crate::platform_clients::SendBundle for Astralane {
 }
 
 impl crate::platform_clients::BuildTx for Astralane {
+    fn platform(&self) -> Platform {
+        Platform::Astralane
+    }
     fn get_tip_address(&self) -> Pubkey {
         *ASTRALANE_TIP_ACCOUNTS
             .choose(&mut rand::rng())
             .or_else(|| ASTRALANE_TIP_ACCOUNTS.first())
             .unwrap()
     }
-    
+
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
     }
-    
+
     // 使用默认实现，无需重写 build_tx
 }
 

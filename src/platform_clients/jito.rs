@@ -15,7 +15,7 @@ use solana_sdk::{signature::Signature, transaction::Transaction};
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::Region;
+use crate::platform_clients::{Platform, Region};
 pub const JITO_TIP_ACCOUNTS: &[Pubkey] = &[
     // pubkey!("96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5"),
     pubkey!("HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe"),
@@ -128,45 +128,48 @@ impl crate::platform_clients::SendTxEncoded for Jito {
 #[async_trait::async_trait]
 impl crate::platform_clients::SendBundle for Jito {
     async fn send_bundle(&self, txs: &[Transaction]) -> Result<Vec<Signature>, String> {
-        let mut sigs = Vec::new();
+        // 将所有交易序列化并 base64 编码
+        let mut encoded_txs = Vec::with_capacity(txs.len());
+        let mut sigs = Vec::with_capacity(txs.len());
         for tx in txs {
-            let encode_txs = match bincode::serialize(tx) {
+            let encode_tx = match bincode::serialize(tx) {
                 Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
                 Err(e) => return Err(format!("bincode serialize error: {}", e)),
             };
-            let request_body = match serde_json::to_string(&json!({
-                "id": 1,
-                "jsonrpc": "2.0",
-                "method": "sendBundle",
-                "params": [
-                    [encode_txs],
-                    { "encoding": "base64" }
-                ]
-            })) {
-                Ok(body) => body,
-                Err(e) => return Err(format!("serde_json error: {}", e)),
-            };
-            let url = format!("{}/api/v1/bundles", self.endpoint);
-            let res = self
-                .http_client
-                .post(&url)
-                .header("Content-Type", "application/json")
-                .body(request_body)
-                .send()
-                .await;
-            let response = match res {
-                Ok(resp) => match resp.text().await {
-                    Ok(text) => text,
-                    Err(e) => return Err(format!("response text error: {}", e)),
-                },
-                Err(e) => {
-                    log::error!("send error: {:?}", e);
-                    return Err(format!("send error: {}", e));
-                }
-            };
-            log::info!("jito response: {:?}", response);
+            encoded_txs.push(encode_tx);
             sigs.push(tx.signatures[0]);
         }
+        let request_body = match serde_json::to_string(&json!({
+            "id": 1,
+            "jsonrpc": "2.0",
+            "method": "sendBundle",
+            "params": [
+                encoded_txs,
+                { "encoding": "base64" }
+            ]
+        })) {
+            Ok(body) => body,
+            Err(e) => return Err(format!("serde_json error: {}", e)),
+        };
+        let url = format!("{}/api/v1", self.endpoint);
+        let res = self
+            .http_client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .body(request_body)
+            .send()
+            .await;
+        let response = match res {
+            Ok(resp) => match resp.text().await {
+                Ok(text) => text,
+                Err(e) => return Err(format!("response text error: {}", e)),
+            },
+            Err(e) => {
+                log::error!("send error: {:?}", e);
+                return Err(format!("send error: {}", e));
+            }
+        };
+        log::info!("jito response: {:?}", response);
         Ok(sigs)
     }
 }
@@ -175,7 +178,9 @@ impl crate::platform_clients::BuildTx for Jito {
     fn get_tip_address(&self) -> Pubkey {
         Self::get_tip_address()
     }
-
+    fn platform(&self) -> Platform {
+        Platform::Jito
+    }
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
     }
