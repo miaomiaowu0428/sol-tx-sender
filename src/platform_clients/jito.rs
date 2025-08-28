@@ -159,7 +159,7 @@ impl crate::platform_clients::SendBundle for Jito {
             Ok(body) => body,
             Err(e) => return Err(format!("serde_json error: {}", e)),
         };
-        let url = format!("{}/api/v1/bundles", self.endpoint);
+        let url = format!("{}/api/v1", self.endpoint);
         let res = self
             .http_client
             .post(&url)
