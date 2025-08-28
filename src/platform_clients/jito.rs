@@ -1,3 +1,11 @@
+/// Jito sendBundle 响应结构体
+#[derive(Debug, serde::Deserialize)]
+struct JitoSendBundleResponse {
+    pub jsonrpc: Option<String>,
+    pub result: Option<String>,
+    pub error: Option<serde_json::Value>,
+    pub id: Option<u64>,
+}
 use std::fmt;
 impl fmt::Display for Jito {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -151,7 +159,7 @@ impl crate::platform_clients::SendBundle for Jito {
             Ok(body) => body,
             Err(e) => return Err(format!("serde_json error: {}", e)),
         };
-        let url = format!("{}/api/v1", self.endpoint);
+        let url = format!("{}/api/v1/bundles", self.endpoint);
         let res = self
             .http_client
             .post(&url)
@@ -169,8 +177,21 @@ impl crate::platform_clients::SendBundle for Jito {
                 return Err(format!("send error: {}", e));
             }
         };
-        log::info!("jito response: {:?}", response);
-        Ok(sigs)
+        log::info!("jito raw response: {:?}", response);
+        // 尝试用结构体解析响应
+        match serde_json::from_str::<JitoSendBundleResponse>(&response) {
+            Ok(resp_obj) => {
+                if let Some(result) = resp_obj.result {
+                    log::info!("jito bundle id: {}", result);
+                    Ok(sigs)
+                } else if let Some(err) = resp_obj.error {
+                    Err(format!("jito error: {}", err))
+                } else {
+                    Err(format!("jito unknown response: {}", response))
+                }
+            }
+            Err(e) => Err(format!("jito response parse error: {}, raw: {}", e, response)),
+        }
     }
 }
 
