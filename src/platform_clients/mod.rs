@@ -97,7 +97,7 @@ impl std::fmt::Display for Platform {
 /// 交易小费与 CU 相关信息
 #[derive(Debug, Clone)]
 pub struct DetailedTx {
-    pub tx: Transaction,
+    pub tx: SolTx,
     pub platform: Platform,
     pub tip: Option<u64>,
     pub cu_limit: Option<u32>,
@@ -218,7 +218,7 @@ pub trait BuildTx {
 
         TxEnvelope {
             tx: DetailedTx {
-                tx,
+                tx:SolTx::Legacy(tx),
                 platform: self.platform(),
                 tip: *tip,
                 cu_limit: cu.0,
@@ -238,20 +238,20 @@ pub trait BuildBundle {
 }
 
 // 单笔 envelope
-/// 单笔交易 envelope，包含交易体、tip 信息和发送者
+/// 单笔交易 envelope，兼容 Legacy/V0，包含 SolTx 和发送者
 pub struct TxEnvelope<'a, T: SendTxEncoded + Sync + Send + 'a> {
     pub tx: DetailedTx,
     pub sender: &'a T,
 }
 
 impl<'a, T: SendTxEncoded + Sync + Send + 'a> TxEnvelope<'a, T> {
-    /// 获取交易体（消耗 envelope）
-    pub fn inner_tx(&self) -> &Transaction {
+    /// 获取内部 SolTx
+    pub fn inner_tx(&self) -> &SolTx {
         &self.tx.tx
     }
-    /// 获取 tip 相关信息
-    pub fn tx(&self) -> &DetailedTx {
-        &self.tx
+    /// 获取签名
+    pub fn sig(&self) -> Signature {
+        self.inner_tx().sig()
     }
 }
 
@@ -262,17 +262,16 @@ pub trait TxSend: Send + Sync {
     fn sig(&self) -> Signature;
 }
 
-/// TxEnvelope 的发送实现
+/// TxEnvelope 的发送实现，兼容 Legacy/V0
 #[async_trait::async_trait]
 impl<'a, T: SendTxEncoded + Sync + Send + 'a> TxSend for TxEnvelope<'a, T> {
     async fn send(&self) -> Result<Signature, String> {
-        let soltx = SolTx::Legacy(self.inner_tx().clone());
-        let b64 = soltx.to_base64().map_err(|e| e.to_string())?;
+        let b64 = self.inner_tx().to_base64().map_err(|e| e.to_string())?;
         let _ = self.sender.send_tx_encoded(&b64).await;
-        Ok(self.inner_tx().signatures[0])
+        Ok(self.inner_tx().sig())
     }
     fn sig(&self) -> Signature {
-        self.inner_tx().signatures[0]
+        self.inner_tx().sig()
     }
 }
 
@@ -386,39 +385,7 @@ fn test_region() {
     }
 }
 
-/// V0 交易 envelope，包含 V0 交易体和发送者
-pub struct V0TxEnvelope<'a, T: BuildV0Tx + Sync + Send + ?Sized> {
-    pub tx: VersionedTransaction,
-    pub sender: &'a T,
-}
 
-impl<'a, T: BuildV0Tx + Sync + Send + ?Sized> V0TxEnvelope<'a, T> {
-    /// 获取 V0 交易体（消耗 envelope）
-    pub fn tx(self) -> VersionedTransaction {
-        self.tx
-    }
-}
-
-/// V0 交易发送 trait，异步发送并返回签名
-#[async_trait::async_trait]
-pub trait V0TxSend: Send + Sync {
-    async fn send(&self) -> Result<Signature, String>;
-    fn sig(&self) -> Signature;
-}
-
-/// V0TxEnvelope 的发送实现
-#[async_trait::async_trait]
-impl<'a, T: BuildV0Tx + SendTxEncoded + Sync + Send + ?Sized> V0TxSend for V0TxEnvelope<'a, T> {
-    async fn send(&self) -> Result<Signature, String> {
-        let soltx = SolTx::V0(self.tx.clone());
-        let b64 = soltx.to_base64().map_err(|e| e.to_string())?;
-        let _ = self.sender.send_tx_encoded(&b64).await;
-        Ok(self.tx.signatures[0])
-    }
-    fn sig(&self) -> Signature {
-        self.tx.signatures[0]
-    }
-}
 
 /// V0 交易组装 trait，直接使用默认实现即可
 pub trait BuildV0Tx {
@@ -431,7 +398,7 @@ pub trait BuildV0Tx {
         nonce: &HashParam,
         cu: &(Option<u32>, Option<u64>),
         address_lookup_tables: &[AddressLookupTableAccount],
-    ) -> Result<V0TxEnvelope<'a, Self>, Box<dyn std::error::Error>>
+    ) -> Result<TxEnvelope<'a, Self>, Box<dyn std::error::Error>>
     where
         Self: Sync + Send + Sized + Display + SendTxEncoded + BuildTx,
     {
@@ -492,8 +459,14 @@ pub trait BuildV0Tx {
             solana_sdk::message::VersionedMessage::V0(message),
             &[signer.as_ref()],
         )?;
-        Ok(V0TxEnvelope {
-            tx: transaction,
+        Ok(TxEnvelope {
+            tx: DetailedTx {
+                tx: SolTx::V0(transaction),
+                platform: self.platform(),
+                tip: *tip,
+                cu_limit: cu.0,
+                cu_price: cu.1,
+            },
             sender: self,
         })
     }
