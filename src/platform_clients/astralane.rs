@@ -117,59 +117,6 @@ impl crate::platform_clients::SendTxEncoded for Astralane {
     }
 }
 
-#[async_trait::async_trait]
-impl crate::platform_clients::SendBundle for Astralane {
-    async fn send_bundle(&self, txs: &[Transaction]) -> Result<Vec<Signature>, String> {
-        if txs.is_empty() {
-            println!("[astralane/send_bundle] Empty transaction bundle provided");
-            return Err("Empty transaction bundle provided".to_string());
-        }
-
-        let mut encoded_txs = Vec::with_capacity(txs.len());
-        for tx in txs {
-            match bincode::serialize(tx) {
-                Ok(bytes) => encoded_txs.push(base64::prelude::BASE64_STANDARD.encode(&bytes)),
-                Err(e) => {
-                    println!("[astralane/send_bundle] bincode serialize error: {}", e);
-                    return Err(format!("bincode serialize error: {}", e));
-                }
-            }
-        }
-
-        let req_json = json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "sendBundle",
-            "params": [encoded_txs],
-        });
-        println!("[astralane/send_bundle] endpoint: {}", self.endpoint);
-        println!("[astralane/send_bundle] api_key: {}", self.auth_token);
-        println!("[astralane/send_bundle] request body: {}", req_json);
-        let res = self
-            .http_client
-            .post(&self.endpoint)
-            .header("Content-Type", "application/json")
-            .header("api_key", self.auth_token.as_str())
-            .json(&req_json)
-            .send()
-            .await;
-        let response = match res {
-            Ok(resp) => match resp.text().await {
-                Ok(text) => text,
-                Err(e) => {
-                    println!("[astralane/send_bundle] response text error: {}", e);
-                    return Err(format!("response text error: {}", e));
-                }
-            },
-            Err(e) => {
-                println!("[astralane/send_bundle] send error: {}", e);
-                return Err(format!("send bundle error: {}", e));
-            }
-        };
-        println!("[astralane/send_bundle] response: {}", response);
-        Ok(txs.iter().map(|tx| tx.signatures[0]).collect())
-    }
-}
 
 impl crate::platform_clients::BuildTx for Astralane {
     fn platform(&self) -> Platform {
@@ -189,17 +136,7 @@ impl crate::platform_clients::BuildTx for Astralane {
     // 使用默认实现，无需重写 build_tx
 }
 
-impl crate::platform_clients::BuildBundle for Astralane {
-    fn build_bundle<'a>(
-        &'a self,
-        txs: &[Transaction],
-    ) -> crate::platform_clients::BundleEnvelope<'a, Astralane> {
-        crate::platform_clients::BundleEnvelope {
-            txs: txs.to_vec(),
-            sender: self,
-        }
-    }
-}
+
 
 // #[async_trait::async_trait]
 // impl SwqosClientTrait for Astralane {

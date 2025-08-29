@@ -23,7 +23,7 @@ use solana_sdk::{signature::Signature, transaction::Transaction};
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{Platform, Region};
+use crate::platform_clients::{Platform, Region, SolTx};
 pub const JITO_TIP_ACCOUNTS: &[Pubkey] = &[
     // pubkey!("96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5"),
     pubkey!("HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe"),
@@ -135,17 +135,17 @@ impl crate::platform_clients::SendTxEncoded for Jito {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendBundle for Jito {
-    async fn send_bundle(&self, txs: &[Transaction]) -> Result<Vec<Signature>, String> {
+    async fn send_bundle(&self, txs: &[SolTx]) -> Result<Vec<Signature>, String> {
         // 将所有交易序列化并 base64 编码
         let mut encoded_txs = Vec::with_capacity(txs.len());
-        let mut sigs = Vec::with_capacity(txs.len());
+        let mut sigs: Vec<Signature> = Vec::with_capacity(txs.len());
         for tx in txs {
             let encode_tx = match bincode::serialize(tx) {
                 Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
                 Err(e) => return Err(format!("bincode serialize error: {}", e)),
             };
             encoded_txs.push(encode_tx);
-            sigs.push(tx.signatures[0]);
+            sigs.push(tx.sig());
         }
         let request_body = match serde_json::to_string(&json!({
             "id": 1,
@@ -212,7 +212,7 @@ impl crate::platform_clients::BuildTx for Jito {
 impl crate::platform_clients::BuildBundle for Jito {
     fn build_bundle<'a>(
         &'a self,
-        txs: &[Transaction],
+        txs: &[SolTx],
     ) -> crate::platform_clients::BundleEnvelope<'a, Jito> {
         crate::platform_clients::BundleEnvelope {
             txs: txs.to_vec(),

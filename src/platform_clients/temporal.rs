@@ -124,53 +124,6 @@ impl crate::platform_clients::SendTxEncoded for Temporal {
     }
 }
 
-#[async_trait::async_trait]
-impl crate::platform_clients::SendBundle for Temporal {
-    async fn send_bundle(&self, txs: &[Transaction]) -> Result<Vec<Signature>, String> {
-        let mut sigs = Vec::new();
-        for tx in txs {
-            let encode_txs = match bincode::serialize(tx) {
-                Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
-                Err(e) => return Err(format!("bincode serialize error: {}", e)),
-            };
-            let mut url = String::with_capacity(self.endpoint.len() + self.token.len() + 20);
-            url.push_str(&self.endpoint);
-            url.push_str("?c=");
-            url.push_str(&self.token);
-            let res = self
-                .http_client
-                .post(&url)
-                .header("Content-Type", "application/json")
-                .json(&json! ({
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "sendTransaction",
-                    "params": [
-                        encode_txs,
-                        {
-                            "encoding": "base64",
-                            "skipPreflight": true,
-                        }
-                    ],
-                }))
-                .send()
-                .await;
-            let response = match res {
-                Ok(resp) => match resp.text().await {
-                    Ok(text) => text,
-                    Err(e) => return Err(format!("response text error: {}", e)),
-                },
-                Err(e) => {
-                    log::error!("send error: {:?}", e);
-                    return Err(format!("send error: {}", e));
-                }
-            };
-            info!("temporal: {}", response);
-            sigs.push(tx.signatures[0]);
-        }
-        Ok(sigs)
-    }
-}
 
 impl crate::platform_clients::BuildTx for Temporal {
     fn get_tip_address(&self) -> Pubkey {
@@ -190,17 +143,6 @@ impl crate::platform_clients::BuildTx for Temporal {
     // 使用默认实现，无需重写 build_tx
 }
 
-impl crate::platform_clients::BuildBundle for Temporal {
-    fn build_bundle<'a>(
-        &'a self,
-        txs: &[Transaction],
-    ) -> crate::platform_clients::BundleEnvelope<'a, Temporal> {
-        crate::platform_clients::BundleEnvelope {
-            txs: txs.to_vec(),
-            sender: self,
-        }
-    }
-}
 
 use std::fmt;
 impl fmt::Display for Temporal {

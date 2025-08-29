@@ -130,12 +130,7 @@ impl SendTxEncoded for Blockrazor {
     }
 }
 
-#[async_trait::async_trait]
-impl SendBundle for Blockrazor {
-    async fn send_bundle(&self, _txs: &[Transaction]) -> Result<Vec<Signature>, String> {
-        Err("Blockrazor 暂不支持批量交易".to_string())
-    }
-}
+
 
 impl BuildTx for Blockrazor {
     fn get_tip_address(&self) -> Pubkey {
@@ -151,14 +146,3 @@ impl BuildTx for Blockrazor {
     // 使用默认实现，无需重写 build_tx
 }
 
-impl BuildBundle for Blockrazor {
-    fn build_bundle<'a>(
-        &'a self,
-        txs: &[Transaction],
-    ) -> crate::platform_clients::BundleEnvelope<'a, Blockrazor> {
-        crate::platform_clients::BundleEnvelope {
-            txs: txs.to_vec(),
-            sender: self,
-        }
-    }
-}

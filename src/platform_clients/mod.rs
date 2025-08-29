@@ -25,6 +25,7 @@ pub mod zeroslot;
 
 // 通用交易枚举
 /// 通用交易类型，兼容 Legacy 和 V0 版本
+#[derive(Clone, Debug)]
 pub enum SolTx {
     Legacy(Transaction),
     V0(VersionedTransaction),
@@ -42,6 +43,25 @@ impl SolTx {
                 let data = bincode::serialize(v0tx)?;
                 Ok(base64::encode(data))
             }
+        }
+    }
+    pub fn sig(&self) -> Signature {
+        match self {
+            SolTx::Legacy(transaction) => transaction.signatures[0],
+            SolTx::V0(versioned_transaction) => versioned_transaction.signatures[0],
+        }
+    }
+}
+
+// 自定义 SolTx 的 Serialize 实现，只序列化内部内容，不包含变体信息
+impl serde::Serialize for SolTx {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            SolTx::Legacy(tx) => tx.serialize(serializer),
+            SolTx::V0(v0tx) => v0tx.serialize(serializer),
         }
     }
 }
@@ -115,7 +135,7 @@ pub trait SendTxEncoded: Sync + Send {
 /// 批量交易发送 trait
 #[async_trait::async_trait]
 pub trait SendBundle: Sync + Send {
-    async fn send_bundle(&self, txs: &[Transaction]) -> Result<Vec<Signature>, String>;
+    async fn send_bundle(&self, txs: &[SolTx]) -> Result<Vec<Signature>, String>;
 }
 
 // 单笔交易组装 trait
@@ -212,7 +232,7 @@ pub trait BuildTx {
 // 批量交易组装 trait
 /// 批量交易组装 trait
 pub trait BuildBundle {
-    fn build_bundle<'a>(&'a self, txs: &[Transaction]) -> BundleEnvelope<'a, Self>
+    fn build_bundle<'a>(&'a self, txs: &[SolTx]) -> BundleEnvelope<'a, Self>
     where
         Self: SendBundle + Sync + Send + Sized;
 }
@@ -259,14 +279,14 @@ impl<'a, T: SendTxEncoded + Sync + Send + 'a> TxSend for TxEnvelope<'a, T> {
 // 批量 envelope
 /// 批量交易 envelope，包含多笔交易和发送者
 pub struct BundleEnvelope<'a, T: SendBundle + Sync + Send + 'a> {
-    pub txs: Vec<Transaction>,
+    pub txs: Vec<SolTx>,
     pub sender: &'a T,
 }
 
 impl<'a, T: SendBundle + Sync + Send + 'a> BundleEnvelope<'a, T> {
     /// 获取所有交易的签名
     pub fn sigs(&self) -> Vec<Signature> {
-        self.txs.iter().map(|tx| tx.signatures[0]).collect()
+        self.txs.iter().map(|tx| tx.sig()).collect()
     }
 }
 

@@ -112,44 +112,6 @@ impl crate::platform_clients::SendTxEncoded for NodeOne {
     }
 }
 
-#[async_trait::async_trait]
-impl crate::platform_clients::SendBundle for NodeOne {
-    async fn send_bundle(&self, txs: &[Transaction]) -> Result<Vec<Signature>, String> {
-        let mut sigs = Vec::new();
-        for tx in txs {
-            let encode_txs = match bincode::serialize(tx) {
-                Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
-                Err(e) => return Err(format!("bincode serialize error: {}", e)),
-            };
-            let res = self
-                .http_client
-                .post(&self.endpoint)
-                .header("Content-Type", "application/json")
-                .header("api-key", self.auth_token.as_str())
-                .json(&json! ({
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "sendTransaction",
-                    "params": [encode_txs],
-                }))
-                .send()
-                .await;
-            let response = match res {
-                Ok(resp) => match resp.text().await {
-                    Ok(text) => text,
-                    Err(e) => return Err(format!("response text error: {}", e)),
-                },
-                Err(e) => {
-                    log::error!("send error: {:?}", e);
-                    return Err(format!("send error: {}", e));
-                }
-            };
-            info!("node1: {}", response);
-            sigs.push(tx.signatures[0]);
-        }
-        Ok(sigs)
-    }
-}
 
 impl crate::platform_clients::BuildTx for NodeOne {
     fn get_tip_address(&self) -> Pubkey {
@@ -169,14 +131,3 @@ impl crate::platform_clients::BuildTx for NodeOne {
     // 使用默认实现，无需重写 build_tx
 }
 
-impl crate::platform_clients::BuildBundle for NodeOne {
-    fn build_bundle<'a>(
-        &'a self,
-        txs: &[Transaction],
-    ) -> crate::platform_clients::BundleEnvelope<'a, NodeOne> {
-        crate::platform_clients::BundleEnvelope {
-            txs: txs.to_vec(),
-            sender: self,
-        }
-    }
-}
