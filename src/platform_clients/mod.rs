@@ -484,3 +484,4 @@ impl BuildV0Tx for jito::Jito {}
 impl BuildV0Tx for nodeone::NodeOne {}
 impl BuildV0Tx for temporal::Temporal {}
 impl BuildV0Tx for zeroslot::ZeroSlot {}
+impl BuildV0Tx for flash_block::FlashBlock {}
