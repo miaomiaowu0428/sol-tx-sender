@@ -22,6 +22,7 @@ pub mod jito;
 pub mod nodeone;
 pub mod temporal;
 pub mod zeroslot;
+pub mod flash_block;
 
 // 通用交易枚举
 /// 通用交易类型，兼容 Legacy 和 V0 版本
@@ -76,6 +77,7 @@ pub enum Platform {
     Nodeone,
     Temporal,
     Zeroslot,
+    FlashBlock
 }
 
 /// 平台枚举的字符串展示实现
@@ -89,6 +91,7 @@ impl std::fmt::Display for Platform {
             Platform::Nodeone => "Nodeone",
             Platform::Temporal => "Temporal",
             Platform::Zeroslot => "Zeroslot",
+            Platform::FlashBlock => "FlashBlock",
         };
         write!(f, "{}", name)
     }
@@ -347,6 +350,7 @@ pub async fn endpoint_keep_alive() {
         nodeone::NodeOne::get_endpoint(),
         temporal::Temporal::get_endpoint(),
         zeroslot::ZeroSlot::get_endpoint(),
+        flash_block::FlashBlock::get_endpoint(),
     ];
     info!("Starting endpoint keep-alive with URLs: {:?}", urls);
     loop {
