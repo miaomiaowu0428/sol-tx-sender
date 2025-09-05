@@ -355,13 +355,15 @@ pub async fn endpoint_keep_alive() {
     info!("Starting endpoint keep-alive with URLs: {:?}", urls);
     loop {
         for url in &urls {
+            let start = std::time::Instant::now();
             let response = client.get(url).send().await;
+            let elapsed = start.elapsed().as_millis();
             match response {
                 Ok(_) => {
-                    log::info!("{} ping successful ", url);
+                    log::info!("{} ping successful, elapsed: {}ms", url, elapsed);
                 }
                 Err(err) => {
-                    log::error!("{} ping failed: {}", err, url);
+                    log::error!("{} ping failed: {}, elapsed: {}ms", url, err, elapsed);
                 }
             }
         }
