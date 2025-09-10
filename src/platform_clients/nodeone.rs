@@ -17,7 +17,7 @@ use solana_sdk::{signature::Signature, transaction::Transaction};
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{Platform, Region};
+use crate::platform_clients::{PlatformName, Region};
 
 pub const NODEONE_TIP_ACCOUNTS: &[Pubkey] = &[
     // pubkey!("node1PqAa3BWWzUnTHVbw8NJHC874zn9ngAkXjgWEej"),
@@ -84,9 +84,7 @@ impl NodeOne {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for NodeOne {
-        fn default_tps(&self) -> u64 {
-        Self::DEFAULT_TPS
-    }
+      
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let res = self
             .http_client
@@ -124,8 +122,8 @@ impl crate::platform_clients::BuildTx for NodeOne {
             .or_else(|| NODEONE_TIP_ACCOUNTS.first())
             .unwrap()
     }
-    fn platform(&self) -> Platform {
-        Platform::Nodeone
+    fn platform(&self) -> PlatformName {
+        PlatformName::Nodeone
     }
     
     fn get_min_tip_amount(&self) -> u64 {

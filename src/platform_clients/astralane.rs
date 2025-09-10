@@ -15,7 +15,7 @@ use solana_sdk::{signature::Signature, transaction::Transaction};
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{Platform, Region};
+use crate::platform_clients::{PlatformName, Region};
 
 pub const ASTRALANE_TIP_ACCOUNTS: &[Pubkey] = &[
     // pubkey!("astrazznxsGUhWShqgNtAdfrzP2G83DzcWVJDxwV9bF"),
@@ -74,9 +74,7 @@ impl Astralane {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for Astralane {
-    fn default_tps(&self) -> u64 {
-        Self::DEFAULT_TPS
-    }
+
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let req_json = json!({
             "jsonrpc": "2.0",
@@ -123,8 +121,8 @@ impl crate::platform_clients::SendTxEncoded for Astralane {
 
 
 impl crate::platform_clients::BuildTx for Astralane {
-    fn platform(&self) -> Platform {
-        Platform::Astralane
+    fn platform(&self) -> PlatformName {
+        PlatformName::Astralane
     }
     fn get_tip_address(&self) -> Pubkey {
         *ASTRALANE_TIP_ACCOUNTS

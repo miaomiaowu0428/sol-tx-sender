@@ -10,7 +10,7 @@ use solana_sdk::signature::Signature;
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{Platform, Region, SendTxEncoded, SolTx};
+use crate::platform_clients::{PlatformName, Region, SendTxEncoded, SolTx};
 pub const FLASH_BLOCK_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("FLaShB3iXXTWE1vu9wQsChUKq3HFtpMAhb8kAh1pf1wi"),
     pubkey!("FLashhsorBmM9dLpuq6qATawcpqk1Y2aqaZfkd48iT3W"),
@@ -106,9 +106,7 @@ impl FlashBlock {
 
 #[async_trait::async_trait]
 impl SendTxEncoded for FlashBlock {
-        fn default_tps(&self) -> u64 {
-        Self::DEFAULT_TPS
-    }
+
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let request_body = match serde_json::to_string(&json!({
             "id": 1,
@@ -238,8 +236,8 @@ impl crate::platform_clients::BuildTx for FlashBlock {
     fn get_tip_address(&self) -> Pubkey {
         Self::get_tip_address()
     }
-    fn platform(&self) -> Platform {
-        Platform::FlashBlock
+    fn platform(&self) -> PlatformName {
+        PlatformName::FlashBlock
     }
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX

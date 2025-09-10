@@ -23,7 +23,7 @@ use solana_sdk::{signature::Signature, transaction::Transaction};
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{Platform, Region, SolTx};
+use crate::platform_clients::{PlatformName, Region, SolTx};
 pub const JITO_TIP_ACCOUNTS: &[Pubkey] = &[
     // pubkey!("96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5"),
     pubkey!("HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe"),
@@ -97,9 +97,7 @@ impl Jito {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for Jito {
-        fn default_tps(&self) -> u64 {
-        Self::DEFAULT_TPS
-    }
+     
     /// 直接接收 base64 编码后的交易数据并发送
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let request_body = match serde_json::to_string(&json!({
@@ -203,8 +201,8 @@ impl crate::platform_clients::BuildTx for Jito {
     fn get_tip_address(&self) -> Pubkey {
         Self::get_tip_address()
     }
-    fn platform(&self) -> Platform {
-        Platform::Jito
+    fn platform(&self) -> PlatformName {
+        PlatformName::Jito
     }
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX

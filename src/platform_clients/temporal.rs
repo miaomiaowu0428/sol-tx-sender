@@ -10,7 +10,7 @@ use solana_sdk::{signature::Signature, transaction::Transaction};
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{Platform, Region};
+use crate::platform_clients::{PlatformName, Region};
 
 pub const TEMPORAL_TIP_ACCOUNTS: &[Pubkey] = &[
     // pubkey!("TEMPaMeCRFAS9EKF53Jd6KpHxgL47uWLcpFArU1Fanq"),
@@ -87,9 +87,7 @@ impl Temporal {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for Temporal {
-        fn default_tps(&self) -> u64 {
-        Self::DEFAULT_TPS
-    }
+        
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let mut url = String::with_capacity(self.endpoint.len() + self.token.len() + 20);
         url.push_str(&self.endpoint);
@@ -136,8 +134,8 @@ impl crate::platform_clients::BuildTx for Temporal {
             .or_else(|| TEMPORAL_TIP_ACCOUNTS.first())
             .unwrap()
     }
-    fn platform(&self) -> Platform {
-        Platform::Temporal
+    fn platform(&self) -> PlatformName {
+        PlatformName::Temporal
     }
 
     fn get_min_tip_amount(&self) -> u64 {

@@ -69,7 +69,7 @@ impl serde::Serialize for SolTx {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// 支持的平台类型
-pub enum Platform {
+pub enum PlatformName {
     Astralane,
     Blockrazor,
     Helius,
@@ -81,17 +81,17 @@ pub enum Platform {
 }
 
 /// 平台枚举的字符串展示实现
-impl std::fmt::Display for Platform {
+impl std::fmt::Display for PlatformName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = match self {
-            Platform::Astralane => "Astralane",
-            Platform::Blockrazor => "Blockrazor",
-            Platform::Helius => "Helius",
-            Platform::Jito => "Jito",
-            Platform::Nodeone => "Nodeone",
-            Platform::Temporal => "Temporal",
-            Platform::Zeroslot => "Zeroslot",
-            Platform::FlashBlock => "FlashBlock",
+            PlatformName::Astralane => "Astralane",
+            PlatformName::Blockrazor => "Blockrazor",
+            PlatformName::Helius => "Helius",
+            PlatformName::Jito => "Jito",
+            PlatformName::Nodeone => "Nodeone",
+            PlatformName::Temporal => "Temporal",
+            PlatformName::Zeroslot => "Zeroslot",
+            PlatformName::FlashBlock => "FlashBlock",
         };
         write!(f, "{}", name)
     }
@@ -101,7 +101,7 @@ impl std::fmt::Display for Platform {
 #[derive(Debug, Clone)]
 pub struct DetailedTx {
     pub tx: SolTx,
-    pub platform: Platform,
+    pub platform: PlatformName,
     pub tip: Option<u64>,
     pub cu_limit: Option<u32>,
     pub cu_price: Option<u64>,
@@ -132,7 +132,6 @@ impl HashParam {
 pub trait SendTxEncoded: Sync + Send {
     /// 发送 base64 编码后的交易
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String>;
-    fn default_tps(&self) -> u64;
 }
 
 // 批量交易发送 trait
@@ -148,7 +147,7 @@ pub trait BuildTx {
     // 需要各平台实现的方法
     fn get_tip_address(&self) -> Pubkey;
     fn get_min_tip_amount(&self) -> u64;
-    fn platform(&self) -> Platform;
+    fn platform(&self) -> PlatformName;
 
     // 默认实现
     /// 默认交易组装实现，支持 tip、cu、nonce 等参数
@@ -248,15 +247,6 @@ pub struct TxEnvelope<'a, T: SendTxEncoded + Sync + Send + 'a> {
     pub sender: &'a T,
 }
 
-impl<'a, T: SendTxEncoded + Sync + Send + 'a> TxEnvelope<'a, T>
-where
-    T: SendTxEncoded + Sync + Send + 'a,
-{
-    pub fn tps(&self) -> u64 {
-        // 之后可能考虑配置化
-        self.sender.default_tps()
-    }
-}
 
 impl<'a, T: SendTxEncoded + Sync + Send + 'a> TxEnvelope<'a, T> {
     /// 获取内部 SolTx
@@ -496,3 +486,40 @@ impl BuildV0Tx for nodeone::NodeOne {}
 impl BuildV0Tx for temporal::Temporal {}
 impl BuildV0Tx for zeroslot::ZeroSlot {}
 impl BuildV0Tx for flash_block::FlashBlock {}
+
+
+pub trait Platform {
+    /// 各平台的默认 TPS 常量，可在实现时重写
+    const DEFAULT_TPS: u64;
+    
+    /// 获取平台默认 TPS，提供默认实现
+    fn default_tps(&self) -> u64 {
+        Self::DEFAULT_TPS
+    }
+}
+
+// 各平台 BuildV0Tx 实现
+impl Platform for astralane::Astralane {
+    const DEFAULT_TPS: u64 = 5;
+}
+impl Platform for blockrazor::Blockrazor {
+    const DEFAULT_TPS: u64 = 1;
+}
+impl Platform for helius::Helius {
+    const DEFAULT_TPS: u64 = 6;
+}
+impl Platform for jito::Jito {
+    const DEFAULT_TPS: u64 = 1;
+}
+impl Platform for nodeone::NodeOne {
+    const DEFAULT_TPS: u64 = 5;
+}
+impl Platform for temporal::Temporal {
+    const DEFAULT_TPS: u64 = 1;
+}
+impl Platform for zeroslot::ZeroSlot {
+    const DEFAULT_TPS: u64 = 5;
+}
+impl Platform for flash_block::FlashBlock {
+    const DEFAULT_TPS: u64 = 10;
+}

@@ -10,7 +10,7 @@ use solana_sdk::{signature::Signature, transaction::Transaction};
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{Platform, Region};
+use crate::platform_clients::{PlatformName, Region};
 
 pub const ZEROSLOT_TIP_ACCOUNTS: &[Pubkey] = &[
     // pubkey!("6fQaVhYZA4w3MBSXjJ81Vf6W1EDYeUPXpgVQ6UQyU1Av"),
@@ -86,9 +86,6 @@ impl ZeroSlot {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for ZeroSlot {
-    fn default_tps(&self) -> u64 {
-        Self::DEFAULT_TPS
-    }
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let mut url = String::new();
         url.push_str(&self.endpoint);
@@ -134,8 +131,8 @@ impl crate::platform_clients::BuildTx for ZeroSlot {
             .or_else(|| ZEROSLOT_TIP_ACCOUNTS.first())
             .unwrap()
     }
-    fn platform(&self) -> Platform {
-        Platform::Zeroslot
+    fn platform(&self) -> PlatformName {
+        PlatformName::Zeroslot
     }
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX

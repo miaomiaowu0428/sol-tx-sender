@@ -16,7 +16,7 @@ use solana_sdk::{signature::Signature, transaction::Transaction};
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{Platform, Region};
+use crate::platform_clients::{PlatformName, Region};
 
 // helius 小费地址
 pub const HELIUS_TIP_ACCOUNTS: &[Pubkey] = &[
@@ -97,9 +97,7 @@ impl Helius {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for Helius {
-        fn default_tps(&self) -> u64 {
-        Self::DEFAULT_TPS
-    }
+
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let res = self
             .http_client
@@ -143,8 +141,8 @@ impl crate::platform_clients::BuildTx for Helius {
             .or_else(|| HELIUS_TIP_ACCOUNTS.first())
             .unwrap()
     }
-    fn platform(&self) -> Platform {
-        Platform::Helius
+    fn platform(&self) -> PlatformName {
+        PlatformName::Helius
     }
 
     fn get_min_tip_amount(&self) -> u64 {
