@@ -486,7 +486,7 @@ impl BuildV0Tx for temporal::Temporal {}
 impl BuildV0Tx for zeroslot::ZeroSlot {}
 impl BuildV0Tx for flash_block::FlashBlock {}
 
-pub trait Platform {
+pub trait Platform: Send {
     /// 获取平台默认 TPS
     fn default_tps(&self) -> u64;
 }
