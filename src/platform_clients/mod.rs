@@ -487,37 +487,48 @@ impl BuildV0Tx for zeroslot::ZeroSlot {}
 impl BuildV0Tx for flash_block::FlashBlock {}
 
 pub trait Platform: Clone + Sized + Send {
-    /// 各平台的默认 TPS 常量，可在实现时重写
-    const DEFAULT_TPS: u64;
-
-    /// 获取平台默认 TPS，提供默认实现
-    fn default_tps(&self) -> u64 {
-        Self::DEFAULT_TPS
-    }
+    /// 获取平台默认 TPS
+    fn default_tps(&self) -> u64;
 }
 
 // 各平台 BuildV0Tx 实现
 impl Platform for astralane::Astralane {
-    const DEFAULT_TPS: u64 = 5;
+    fn default_tps(&self) -> u64 {
+        5
+    }
 }
 impl Platform for blockrazor::Blockrazor {
-    const DEFAULT_TPS: u64 = 1;
+    fn default_tps(&self) -> u64 {
+        1
+    }
 }
 impl Platform for helius::Helius {
-    const DEFAULT_TPS: u64 = 6;
+    fn default_tps(&self) -> u64 {
+        6
+    }
 }
 impl Platform for jito::Jito {
-    const DEFAULT_TPS: u64 = 1;
+    fn default_tps(&self) -> u64 {
+        1
+    }
 }
 impl Platform for nodeone::NodeOne {
-    const DEFAULT_TPS: u64 = 5;
+    fn default_tps(&self) -> u64 {
+        5
+    }
 }
 impl Platform for temporal::Temporal {
-    const DEFAULT_TPS: u64 = 1;
+    fn default_tps(&self) -> u64 {
+        1
+    }
 }
 impl Platform for zeroslot::ZeroSlot {
-    const DEFAULT_TPS: u64 = 5;
+    fn default_tps(&self) -> u64 {
+        5
+    }
 }
 impl Platform for flash_block::FlashBlock {
-    const DEFAULT_TPS: u64 = 10;
+    fn default_tps(&self) -> u64 {
+        10
+    }
 }
