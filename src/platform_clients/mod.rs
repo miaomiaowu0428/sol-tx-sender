@@ -129,7 +129,7 @@ impl HashParam {
 // 单笔交易发送 trait
 /// 单笔交易发送 trait，发送 base64 编码后的交易
 #[async_trait::async_trait]
-pub trait SendTxEncoded: Platform + Sync + Send {
+pub trait SendTxEncoded: Sync + Send {
     /// 发送 base64 编码后的交易
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String>;
 }
@@ -137,13 +137,13 @@ pub trait SendTxEncoded: Platform + Sync + Send {
 // 批量交易发送 trait
 /// 批量交易发送 trait
 #[async_trait::async_trait]
-pub trait SendBundle: Platform + Sync + Send {
+pub trait SendBundle: Sync + Send {
     async fn send_bundle(&self, txs: &[SolTx]) -> Result<Vec<Signature>, String>;
 }
 
 // 单笔交易组装 trait
 /// 单笔交易组装 trait，各平台需实现相关方法
-pub trait BuildTx: Platform {
+pub trait BuildTx {
     // 需要各平台实现的方法
     fn get_tip_address(&self) -> Pubkey;
     fn get_min_tip_amount(&self) -> u64;
@@ -485,50 +485,3 @@ impl BuildV0Tx for nodeone::NodeOne {}
 impl BuildV0Tx for temporal::Temporal {}
 impl BuildV0Tx for zeroslot::ZeroSlot {}
 impl BuildV0Tx for flash_block::FlashBlock {}
-
-pub trait Platform: Send {
-    /// 获取平台默认 TPS
-    fn default_tps(&self) -> u64;
-}
-
-// 各平台 BuildV0Tx 实现
-impl Platform for astralane::Astralane {
-    fn default_tps(&self) -> u64 {
-        5
-    }
-}
-impl Platform for blockrazor::Blockrazor {
-    fn default_tps(&self) -> u64 {
-        1
-    }
-}
-impl Platform for helius::Helius {
-    fn default_tps(&self) -> u64 {
-        6
-    }
-}
-impl Platform for jito::Jito {
-    fn default_tps(&self) -> u64 {
-        1
-    }
-}
-impl Platform for nodeone::NodeOne {
-    fn default_tps(&self) -> u64 {
-        5
-    }
-}
-impl Platform for temporal::Temporal {
-    fn default_tps(&self) -> u64 {
-        1
-    }
-}
-impl Platform for zeroslot::ZeroSlot {
-    fn default_tps(&self) -> u64 {
-        5
-    }
-}
-impl Platform for flash_block::FlashBlock {
-    fn default_tps(&self) -> u64 {
-        10
-    }
-}
