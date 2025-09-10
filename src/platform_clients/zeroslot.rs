@@ -42,9 +42,9 @@ pub struct ZeroSlot {
 }
 
 impl ZeroSlot {
-    const MIN_TIP_AMOUNT_TX: u64 = 1_000_000; // 单笔交易最低 tip
-    const MIN_TIP_AMOUNT_BUNDLE: u64 = 1_000_000; // 批量交易最低 tip
-    const DEFAULT_TPS: u64 = 5;
+    pub const MIN_TIP_AMOUNT_TX: u64 = 1_000_000; // 单笔交易最低 tip
+    pub const MIN_TIP_AMOUNT_BUNDLE: u64 = 1_000_000; // 批量交易最低 tip
+    pub const DEFAULT_TPS: u64 = 5;
 
     pub fn get_endpoint() -> String {
         match *REGION {

@@ -61,8 +61,8 @@ impl fmt::Display for FlashBlock {
 }
 
 impl FlashBlock {
-    const MIN_TIP_AMOUNT_TX: u64 = 0_001_000_000; // 单笔交易最低 tip
-    const DEFAULT_TPS:u64 = 10;
+    pub const MIN_TIP_AMOUNT_TX: u64 = 0_001_000_000; // 单笔交易最低 tip
+    pub const DEFAULT_TPS:u64 = 10;
 
     pub fn get_endpoint() -> String {
         match *REGION {

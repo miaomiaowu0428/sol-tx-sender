@@ -40,8 +40,8 @@ pub struct Astralane {
 }
 
 impl Astralane {
-    const MIN_TIP_AMOUNT_TX: u64 = 0_000_100_000; // 单笔交易最低 tip
-        const DEFAULT_TPS:u64 = 5;
+    pub const MIN_TIP_AMOUNT_TX: u64 = 0_000_100_000; // 单笔交易最低 tip
+    pub const DEFAULT_TPS: u64 = 5;
 
     pub fn get_endpoint() -> String {
         match *REGION {
@@ -75,7 +75,6 @@ impl Astralane {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for Astralane {
-
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let req_json = json!({
             "jsonrpc": "2.0",
@@ -120,7 +119,6 @@ impl crate::platform_clients::SendTxEncoded for Astralane {
     }
 }
 
-
 impl crate::platform_clients::BuildTx for Astralane {
     fn platform(&self) -> PlatformName {
         PlatformName::Astralane
@@ -138,8 +136,6 @@ impl crate::platform_clients::BuildTx for Astralane {
 
     // 使用默认实现，无需重写 build_tx
 }
-
-
 
 // #[async_trait::async_trait]
 // impl SwqosClientTrait for Astralane {

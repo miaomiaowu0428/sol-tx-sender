@@ -50,8 +50,8 @@ pub struct Blockrazor {
 }
 
 impl Blockrazor {
-    const MIN_TIP_AMOUNT_TX: u64 = 1_000_000; // 单笔交易最低 tip
-    const DEFAULT_TPS: u64 = 1;
+    pub const MIN_TIP_AMOUNT_TX: u64 = 1_000_000; // 单笔交易最低 tip
+    pub const DEFAULT_TPS: u64 = 1;
 
     pub fn new() -> Self {
         Self::with_client(HTTP_CLIENT.clone())

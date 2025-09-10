@@ -52,9 +52,9 @@ pub struct Jito {
 }
 
 impl Jito {
-    const MIN_TIP_AMOUNT_TX: u64 = 1_000; // 单笔交易最低 tip
-    const MIN_TIP_AMOUNT_BUNDLE: u64 = 10_000; // 批量交易最低 tip
-        const DEFAULT_TPS:u64 = 1;
+    pub const MIN_TIP_AMOUNT_TX: u64 = 1_000; // 单笔交易最低 tip
+    pub const MIN_TIP_AMOUNT_BUNDLE: u64 = 10_000; // 批量交易最低 tip
+    pub const DEFAULT_TPS: u64 = 1;
 
     pub fn get_endpoint() -> String {
         match *REGION {
@@ -98,7 +98,6 @@ impl Jito {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for Jito {
-     
     /// 直接接收 base64 编码后的交易数据并发送
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let request_body = match serde_json::to_string(&json!({
@@ -193,7 +192,10 @@ impl crate::platform_clients::SendBundle for Jito {
                     Err(format!("jito unknown response: {}", response))
                 }
             }
-            Err(e) => Err(format!("jito response parse error: {}, raw: {}", e, response)),
+            Err(e) => Err(format!(
+                "jito response parse error: {}, raw: {}",
+                e, response
+            )),
         }
     }
 }
@@ -223,4 +225,3 @@ impl crate::platform_clients::BuildBundle for Jito {
         }
     }
 }
-

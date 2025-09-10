@@ -51,8 +51,8 @@ pub struct Helius {
 }
 
 impl Helius {
-    const MIN_TIP_AMOUNT_TX: u64 = 1_000_000; // 单笔交易最低 tip  
-    const DEFAULT_TPS: u64 = 6;
+    pub const MIN_TIP_AMOUNT_TX: u64 = 1_000_000; // 单笔交易最低 tip  
+    pub const DEFAULT_TPS: u64 = 6;
 
     pub fn get_endpoint() -> String {
         match *REGION {
@@ -98,7 +98,6 @@ impl Helius {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for Helius {
-
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let res = self
             .http_client

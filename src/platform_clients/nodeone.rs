@@ -43,9 +43,9 @@ pub struct NodeOne {
 }
 
 impl NodeOne {
-    const MIN_TIP_AMOUNT_TX: u64 = 2_000_000; // 单笔交易最低 tip
-    const MIN_TIP_AMOUNT_BUNDLE: u64 = 2_000_000; // 批量交易最低 tip
-        const DEFAULT_TPS:u64 = 5;
+    pub const MIN_TIP_AMOUNT_TX: u64 = 2_000_000; // 单笔交易最低 tip
+    pub const MIN_TIP_AMOUNT_BUNDLE: u64 = 2_000_000; // 批量交易最低 tip
+    pub const DEFAULT_TPS: u64 = 5;
 
     pub fn get_endpoint() -> String {
         match *REGION {
@@ -55,7 +55,6 @@ impl NodeOne {
             _ => String::new(),
         }
     }
-
 
     pub fn new() -> Self {
         let region = *crate::constants::REGION;
@@ -85,7 +84,6 @@ impl NodeOne {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for NodeOne {
-      
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let res = self
             .http_client
@@ -115,7 +113,6 @@ impl crate::platform_clients::SendTxEncoded for NodeOne {
     }
 }
 
-
 impl crate::platform_clients::BuildTx for NodeOne {
     fn get_tip_address(&self) -> Pubkey {
         *NODEONE_TIP_ACCOUNTS
@@ -126,11 +123,10 @@ impl crate::platform_clients::BuildTx for NodeOne {
     fn platform(&self) -> PlatformName {
         PlatformName::Nodeone
     }
-    
+
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
     }
-    
+
     // 使用默认实现，无需重写 build_tx
 }
-
