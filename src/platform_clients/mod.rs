@@ -129,7 +129,7 @@ impl HashParam {
 // 单笔交易发送 trait
 /// 单笔交易发送 trait，发送 base64 编码后的交易
 #[async_trait::async_trait]
-pub trait SendTxEncoded: Sync + Send {
+pub trait SendTxEncoded: Platform + Sync + Send {
     /// 发送 base64 编码后的交易
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String>;
 }
@@ -137,13 +137,13 @@ pub trait SendTxEncoded: Sync + Send {
 // 批量交易发送 trait
 /// 批量交易发送 trait
 #[async_trait::async_trait]
-pub trait SendBundle: Sync + Send {
+pub trait SendBundle: Platform + Sync + Send {
     async fn send_bundle(&self, txs: &[SolTx]) -> Result<Vec<Signature>, String>;
 }
 
 // 单笔交易组装 trait
 /// 单笔交易组装 trait，各平台需实现相关方法
-pub trait BuildTx {
+pub trait BuildTx: Platform {
     // 需要各平台实现的方法
     fn get_tip_address(&self) -> Pubkey;
     fn get_min_tip_amount(&self) -> u64;
