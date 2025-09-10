@@ -35,6 +35,7 @@ pub const NODEONE_ENDPOINT: &[&str] = &[
     "https://ams.node1.me", // Amsterdam
 ];
 
+#[derive(Clone)]
 pub struct NodeOne {
     pub endpoint: String,
     pub auth_token: String,

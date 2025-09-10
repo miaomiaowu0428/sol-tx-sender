@@ -41,6 +41,7 @@ const BLOCKRAZOR_ENDIPOINTS: &[&str] = &[
     "http://amsterdam.solana.blockrazor.xyz:443/sendTransaction", // Amsterdam
 ];
 
+#[derive(Clone)]
 pub struct Blockrazor {
     pub endpoint: String,
     pub region: Region,

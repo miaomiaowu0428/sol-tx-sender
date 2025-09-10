@@ -488,7 +488,7 @@ impl BuildV0Tx for zeroslot::ZeroSlot {}
 impl BuildV0Tx for flash_block::FlashBlock {}
 
 
-pub trait Platform {
+pub trait Platform: Clone {
     /// 各平台的默认 TPS 常量，可在实现时重写
     const DEFAULT_TPS: u64;
     

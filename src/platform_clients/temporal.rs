@@ -41,6 +41,7 @@ pub const TEMPORAL_ENDPOINT: &[&str] = &[
     "http://fra2.nozomi.temporal.xyz/", //Frankfurt
 ];
 
+#[derive(Clone)]
 pub struct Temporal {
     pub endpoint: String,
     pub token: String,

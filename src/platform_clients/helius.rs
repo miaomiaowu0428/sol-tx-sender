@@ -43,6 +43,7 @@ pub const HELIUS_ENDPOINT: &[&str] = &[
     "http://sg-sender.helius-rpc.com/fast",  // Singapore
 ];
 
+#[derive(Clone)]
 pub struct Helius {
     pub endpoint: String,
     pub auth_token: String,

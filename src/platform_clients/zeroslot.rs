@@ -34,6 +34,7 @@ pub const ZEROSLOT_ENDPOINT: &[&str] = &[
     "https://la.0slot.trade",  // LosAngeles
 ];
 
+#[derive(Clone)]
 pub struct ZeroSlot {
     pub endpoint: String,
     pub token: String,

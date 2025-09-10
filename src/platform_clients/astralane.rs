@@ -32,6 +32,7 @@ pub const ASTRALANE_ENDPOINTS: &[&str] = &[
     "http://ams.gateway.astralane.io/iris", // Amsterdam
 ];
 
+#[derive(Clone)]
 pub struct Astralane {
     pub endpoint: String,   // 只保存基础 endpoint，不拼 key
     pub auth_token: String, // 单独保存 key

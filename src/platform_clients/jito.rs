@@ -45,6 +45,7 @@ pub const JITO_ENDPOINTS: &[&str] = &[
     "https://singapore.mainnet.block-engine.jito.wtf",
 ];
 
+#[derive(Clone)]
 pub struct Jito {
     pub endpoint: String,
     pub http_client: Arc<Client>,

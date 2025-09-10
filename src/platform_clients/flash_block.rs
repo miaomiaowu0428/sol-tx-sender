@@ -39,6 +39,7 @@ pub const FLASH_BLOCK_ENDPOINTS: &[&str] = &[
     "http://london.flashblock.trade",
 ];
 
+#[derive(Clone)]
 pub struct FlashBlock {
     pub endpoint: String,
     pub http_client: Arc<Client>,
