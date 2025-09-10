@@ -247,7 +247,6 @@ pub struct TxEnvelope<'a, T: SendTxEncoded + Sync + Send + 'a> {
     pub sender: &'a T,
 }
 
-
 impl<'a, T: SendTxEncoded + Sync + Send + 'a> TxEnvelope<'a, T> {
     /// 获取内部 SolTx
     pub fn inner_tx(&self) -> &SolTx {
@@ -487,11 +486,10 @@ impl BuildV0Tx for temporal::Temporal {}
 impl BuildV0Tx for zeroslot::ZeroSlot {}
 impl BuildV0Tx for flash_block::FlashBlock {}
 
-
-pub trait Platform: Clone {
+pub trait Platform: Clone + Sized + Send {
     /// 各平台的默认 TPS 常量，可在实现时重写
     const DEFAULT_TPS: u64;
-    
+
     /// 获取平台默认 TPS，提供默认实现
     fn default_tps(&self) -> u64 {
         Self::DEFAULT_TPS
