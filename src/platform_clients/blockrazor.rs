@@ -3,7 +3,8 @@ impl fmt::Display for Blockrazor {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Blockrazor")
     }
-}use base64::Engine;
+}
+use base64::Engine;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
 use serde_json::json;
@@ -49,7 +50,7 @@ pub struct Blockrazor {
 
 impl Blockrazor {
     const MIN_TIP_AMOUNT_TX: u64 = 1_000_000; // 单笔交易最低 tip
-    const MIN_TIP_AMOUNT_BUNDLE: u64 = 1_000_000; // 批量交易最低 tip
+    const DEFAULT_TPS: u64 = 1;
 
     pub fn new() -> Self {
         Self::with_client(HTTP_CLIENT.clone())
@@ -103,6 +104,9 @@ fn read_auth_token_from_env() -> String {
 
 #[async_trait::async_trait]
 impl SendTxEncoded for Blockrazor {
+        fn default_tps(&self) -> u64 {
+        Self::DEFAULT_TPS
+    }
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let res = self
             .http_client
@@ -130,8 +134,6 @@ impl SendTxEncoded for Blockrazor {
     }
 }
 
-
-
 impl BuildTx for Blockrazor {
     fn get_tip_address(&self) -> Pubkey {
         self.get_tip_address()
@@ -145,4 +147,3 @@ impl BuildTx for Blockrazor {
 
     // 使用默认实现，无需重写 build_tx
 }
-

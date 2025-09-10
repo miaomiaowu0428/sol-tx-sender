@@ -51,6 +51,7 @@ pub struct Temporal {
 impl Temporal {
     const MIN_TIP_AMOUNT_TX: u64 = 1_000_000; // 单笔交易最低 tip
     const MIN_TIP_AMOUNT_BUNDLE: u64 = 1_000_000; // 批量交易最低 tip
+        const DEFAULT_TPS:u64 = 1;
 
     pub fn get_endpoint() -> String {
         match *REGION {
@@ -86,6 +87,9 @@ impl Temporal {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for Temporal {
+        fn default_tps(&self) -> u64 {
+        Self::DEFAULT_TPS
+    }
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let mut url = String::with_capacity(self.endpoint.len() + self.token.len() + 20);
         url.push_str(&self.endpoint);

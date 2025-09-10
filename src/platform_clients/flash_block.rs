@@ -106,6 +106,9 @@ impl FlashBlock {
 
 #[async_trait::async_trait]
 impl SendTxEncoded for FlashBlock {
+        fn default_tps(&self) -> u64 {
+        Self::DEFAULT_TPS
+    }
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let request_body = match serde_json::to_string(&json!({
             "id": 1,

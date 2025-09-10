@@ -17,12 +17,12 @@ use solana_sdk::signer::Signer;
 use crate::constants::HTTP_CLIENT;
 pub mod astralane;
 pub mod blockrazor;
+pub mod flash_block;
 pub mod helius;
 pub mod jito;
 pub mod nodeone;
 pub mod temporal;
 pub mod zeroslot;
-pub mod flash_block;
 
 // 通用交易枚举
 /// 通用交易类型，兼容 Legacy 和 V0 版本
@@ -77,7 +77,7 @@ pub enum Platform {
     Nodeone,
     Temporal,
     Zeroslot,
-    FlashBlock
+    FlashBlock,
 }
 
 /// 平台枚举的字符串展示实现
@@ -132,6 +132,7 @@ impl HashParam {
 pub trait SendTxEncoded: Sync + Send {
     /// 发送 base64 编码后的交易
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String>;
+    fn default_tps(&self) -> u64;
 }
 
 // 批量交易发送 trait
@@ -221,7 +222,7 @@ pub trait BuildTx {
 
         TxEnvelope {
             tx: DetailedTx {
-                tx:SolTx::Legacy(tx),
+                tx: SolTx::Legacy(tx),
                 platform: self.platform(),
                 tip: *tip,
                 cu_limit: cu.0,
@@ -245,6 +246,16 @@ pub trait BuildBundle {
 pub struct TxEnvelope<'a, T: SendTxEncoded + Sync + Send + 'a> {
     pub tx: DetailedTx,
     pub sender: &'a T,
+}
+
+impl<'a, T: SendTxEncoded + Sync + Send + 'a> TxEnvelope<'a, T>
+where
+    T: SendTxEncoded + Sync + Send + 'a,
+{
+    pub fn tps(&self) -> u64 {
+        // 之后可能考虑配置化
+        self.sender.default_tps()
+    }
 }
 
 impl<'a, T: SendTxEncoded + Sync + Send + 'a> TxEnvelope<'a, T> {
@@ -390,8 +401,6 @@ fn test_region() {
         println!("{}, {:?}", region, Region::from(region));
     }
 }
-
-
 
 /// V0 交易组装 trait，直接使用默认实现即可
 pub trait BuildV0Tx {

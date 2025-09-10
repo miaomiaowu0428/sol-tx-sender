@@ -51,7 +51,7 @@ pub struct Helius {
 
 impl Helius {
     const MIN_TIP_AMOUNT_TX: u64 = 1_000_000; // 单笔交易最低 tip  
-    const MIN_TIP_AMOUNT_BUNDLE: u64 = 1_000_000; // 批量交易最低 tip
+    const DEFAULT_TPS: u64 = 6;
 
     pub fn get_endpoint() -> String {
         match *REGION {
@@ -97,6 +97,9 @@ impl Helius {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for Helius {
+        fn default_tps(&self) -> u64 {
+        Self::DEFAULT_TPS
+    }
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let res = self
             .http_client
@@ -133,7 +136,6 @@ impl crate::platform_clients::SendTxEncoded for Helius {
     }
 }
 
-
 impl crate::platform_clients::BuildTx for Helius {
     fn get_tip_address(&self) -> Pubkey {
         *HELIUS_TIP_ACCOUNTS
@@ -141,13 +143,13 @@ impl crate::platform_clients::BuildTx for Helius {
             .or_else(|| HELIUS_TIP_ACCOUNTS.first())
             .unwrap()
     }
-        fn platform(&self) -> Platform {
-            Platform::Helius
-        }
+    fn platform(&self) -> Platform {
+        Platform::Helius
+    }
 
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
     }
-    
+
     // 使用默认实现，无需重写 build_tx
 }

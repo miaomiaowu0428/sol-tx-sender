@@ -43,6 +43,7 @@ pub struct ZeroSlot {
 impl ZeroSlot {
     const MIN_TIP_AMOUNT_TX: u64 = 1_000_000; // 单笔交易最低 tip
     const MIN_TIP_AMOUNT_BUNDLE: u64 = 1_000_000; // 批量交易最低 tip
+    const DEFAULT_TPS: u64 = 5;
 
     pub fn get_endpoint() -> String {
         match *REGION {
@@ -85,6 +86,9 @@ impl ZeroSlot {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for ZeroSlot {
+    fn default_tps(&self) -> u64 {
+        Self::DEFAULT_TPS
+    }
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let mut url = String::new();
         url.push_str(&self.endpoint);
@@ -123,7 +127,6 @@ impl crate::platform_clients::SendTxEncoded for ZeroSlot {
     }
 }
 
-
 impl crate::platform_clients::BuildTx for ZeroSlot {
     fn get_tip_address(&self) -> Pubkey {
         *ZEROSLOT_TIP_ACCOUNTS
@@ -140,7 +143,6 @@ impl crate::platform_clients::BuildTx for ZeroSlot {
 
     // 使用默认实现，无需重写 build_tx
 }
-
 
 impl std::fmt::Display for ZeroSlot {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
