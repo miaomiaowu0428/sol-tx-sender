@@ -60,7 +60,8 @@ impl fmt::Display for FlashBlock {
 }
 
 impl FlashBlock {
-    const MIN_TIP_AMOUNT_TX: u64 = 0_000_100_000; // 单笔交易最低 tip
+    const MIN_TIP_AMOUNT_TX: u64 = 0_001_000_000; // 单笔交易最低 tip
+    const DEFAULT_TPS:u64 = 10;
 
     pub fn get_endpoint() -> String {
         match *REGION {
@@ -240,7 +241,6 @@ impl crate::platform_clients::BuildTx for FlashBlock {
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
     }
-
     // 使用默认实现，无需重写 build_tx
 }
 
