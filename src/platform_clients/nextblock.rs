@@ -68,6 +68,10 @@ impl NextBlock {
         }
     }
 
+    pub fn get_endpoint() -> String {
+        Self::get_endpoint_for_region(*REGION)
+    }
+
     pub fn new() -> Self {
         // 根据区域选择端点
         let region = *REGION;
