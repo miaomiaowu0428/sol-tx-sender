@@ -10,7 +10,6 @@ pub mod api_config {
     pub const BLOCKRAZOR_KEY: &str = "";
 }
 
-
 pub static HTTP_CLIENT: LazyLock<Arc<Client>> = LazyLock::new(|| {
     Arc::new(
         Client::builder()
@@ -40,4 +39,3 @@ pub static PAYER: LazyLock<Arc<Keypair>> = LazyLock::new(|| {
     log::info!("Using wallet : {}", keypair.pubkey());
     Arc::new(keypair)
 });
-

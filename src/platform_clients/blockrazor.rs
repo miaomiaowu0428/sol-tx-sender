@@ -15,7 +15,9 @@ use solana_sdk::{signature::Signature, transaction::Transaction};
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{BuildBundle, BuildTx, PlatformName, Region, SendBundle, SendTxEncoded};
+use crate::platform_clients::{
+    BuildBundle, BuildTx, PlatformName, Region, SendBundle, SendTxEncoded,
+};
 
 const BLOCKRAZOR_TIP_ACCOUNTS: &[Pubkey] = &[
     // pubkey!("FjmZZrFvhnqqb9ThCuMVnENaM3JGVuGWNyCAxRJcFpg9"),
@@ -105,7 +107,6 @@ fn read_auth_token_from_env() -> String {
 
 #[async_trait::async_trait]
 impl SendTxEncoded for Blockrazor {
-
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let res = self
             .http_client

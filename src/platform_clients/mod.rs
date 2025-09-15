@@ -20,6 +20,7 @@ pub mod blockrazor;
 pub mod flash_block;
 pub mod helius;
 pub mod jito;
+pub mod nextblock;
 pub mod nodeone;
 pub mod temporal;
 pub mod zeroslot;
@@ -78,6 +79,7 @@ pub enum PlatformName {
     Temporal,
     Zeroslot,
     FlashBlock,
+    Nextblock,
 }
 
 /// 平台枚举的字符串展示实现
@@ -92,6 +94,7 @@ impl std::fmt::Display for PlatformName {
             PlatformName::Temporal => "Temporal",
             PlatformName::Zeroslot => "Zeroslot",
             PlatformName::FlashBlock => "FlashBlock",
+            PlatformName::Nextblock => "Nextblock",
         };
         write!(f, "{}", name)
     }
@@ -485,3 +488,4 @@ impl BuildV0Tx for nodeone::NodeOne {}
 impl BuildV0Tx for temporal::Temporal {}
 impl BuildV0Tx for zeroslot::ZeroSlot {}
 impl BuildV0Tx for flash_block::FlashBlock {}
+impl BuildV0Tx for nextblock::NextBlock {}

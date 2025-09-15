@@ -1,8 +1,8 @@
-use std::env;
 use base64::Engine;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
 use serde_json::json;
+use std::env;
 use std::sync::Arc;
 
 use solana_sdk::signature::Signature;
@@ -62,7 +62,7 @@ impl fmt::Display for FlashBlock {
 
 impl FlashBlock {
     pub const MIN_TIP_AMOUNT_TX: u64 = 0_001_000_000; // 单笔交易最低 tip
-    pub const DEFAULT_TPS:u64 = 10;
+    pub const DEFAULT_TPS: u64 = 10;
 
     pub fn get_endpoint() -> String {
         match *REGION {
@@ -92,7 +92,7 @@ impl FlashBlock {
         FlashBlock {
             endpoint,
             http_client,
-            auth_token
+            auth_token,
         }
     }
 
@@ -104,10 +104,8 @@ impl FlashBlock {
     }
 }
 
-
 #[async_trait::async_trait]
 impl SendTxEncoded for FlashBlock {
-
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
         let request_body = match serde_json::to_string(&json!({
             "id": 1,
@@ -122,7 +120,7 @@ impl SendTxEncoded for FlashBlock {
             Err(e) => return Err(format!("serde_json error: {}", e)),
         };
         let url = format!("{}/", self.endpoint);
-    
+
         let res = self
             .http_client
             .post(&url)
@@ -162,10 +160,6 @@ impl SendTxEncoded for FlashBlock {
     }
 }
 
-
-
-
-
 #[async_trait::async_trait]
 impl crate::platform_clients::SendBundle for FlashBlock {
     async fn send_bundle(&self, txs: &[SolTx]) -> Result<Vec<Signature>, String> {
@@ -193,7 +187,7 @@ impl crate::platform_clients::SendBundle for FlashBlock {
             Err(e) => return Err(format!("serde_json error: {}", e)),
         };
         let url = format!("{}/", self.endpoint);
-    
+
         let res = self
             .http_client
             .post(&url)
