@@ -358,6 +358,7 @@ pub async fn endpoint_keep_alive() {
         zeroslot::ZeroSlot::get_endpoint(),
         flash_block::FlashBlock::get_endpoint(),
         nextblock::NextBlock::get_endpoint(),
+        stellium::Stellium::get_endpoint(),
     ];
     info!("Starting endpoint keep-alive with URLs: {:?}", urls);
     loop {
