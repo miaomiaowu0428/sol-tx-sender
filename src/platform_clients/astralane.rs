@@ -4,13 +4,23 @@ impl fmt::Display for Astralane {
         write!(f, "Astralane")
     }
 }
+
+/// Astralane sendBundle 响应结构体
+#[derive(Debug, serde::Deserialize)]
+struct AstralaneSendBundleResponse {
+    pub jsonrpc: Option<String>,
+    pub result: Option<Vec<String>>,
+    pub error: Option<serde_json::Value>,
+    pub id: Option<u64>,
+}
+
 use base64::Engine;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
 use serde_json::json;
 use std::sync::Arc;
 
-use solana_sdk::{signature::Signature, transaction::Transaction};
+use solana_sdk::signature::Signature;
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
@@ -41,6 +51,7 @@ pub struct Astralane {
 
 impl Astralane {
     pub const MIN_TIP_AMOUNT_TX: u64 = 0_000_100_000; // 单笔交易最低 tip
+    pub const MIN_TIP_AMOUNT_BUNDLE: u64 = 0_000_100_000; // 批量交易最低 tip
     pub const DEFAULT_TPS: u64 = 5;
 
     pub fn get_endpoint() -> String {
@@ -89,9 +100,9 @@ impl crate::platform_clients::SendTxEncoded for Astralane {
                 { "mevProtect": true }
             ],
         });
-        println!("[astralane/send_tx] endpoint: {}", self.endpoint);
-        println!("[astralane/send_tx] api-key(header): {}", self.auth_token);
-        println!("[astralane/send_tx] request body: {}", req_json);
+        // println!("[astralane/send_tx] endpoint: {}", self.endpoint);
+        // println!("[astralane/send_tx] api-key(header): {}", self.auth_token);
+        // println!("[astralane/send_tx] request body: {}", req_json);
         let res = self
             .http_client
             .post(&self.endpoint)
@@ -100,22 +111,109 @@ impl crate::platform_clients::SendTxEncoded for Astralane {
             .json(&req_json)
             .send()
             .await;
-        println!("[astralane/send_tx] res: {res:?}");
+        // println!("[astralane/send_tx] res: {res:?}");
         let response = match res {
             Ok(resp) => match resp.text().await {
                 Ok(text) => text,
                 Err(e) => {
-                    println!("[astralane/send_tx] response text error: {}", e);
+                    // println!("[astralane/send_tx] response text error: {}", e);
                     return Err(format!("response text error: {}", e));
                 }
             },
             Err(e) => {
-                println!("[astralane/send_tx] send error: {}", e);
+                // println!("[astralane/send_tx] send error: {}", e);
                 return Err(format!("send error: {}", e));
             }
         };
-        println!("[astralane/send_tx] response: {}", response);
+        // println!("[astralane/send_tx] response: {}", response);
         Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::platform_clients::SendBundle for Astralane {
+    async fn send_bundle(
+        &self,
+        txs: &[crate::platform_clients::SolTx],
+    ) -> Result<Vec<Signature>, String> {
+        // 将所有交易序列化并 base64 编码
+        let mut encoded_txs = Vec::with_capacity(txs.len());
+        let mut sigs: Vec<Signature> = Vec::with_capacity(txs.len());
+        for tx in txs {
+            let encode_tx = match bincode::serialize(tx) {
+                Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
+                Err(e) => return Err(format!("bincode serialize error: {}", e)),
+            };
+            encoded_txs.push(encode_tx);
+            sigs.push(tx.sig());
+        }
+
+        let request_body = match serde_json::to_string(&json!({
+            "id": 1,
+            "jsonrpc": "2.0",
+            "method": "sendBundle",
+            "params": [
+                encoded_txs,
+                {
+                    "encoding": "base64",
+                    "mevProtect": true,
+                    "revertProtection": false
+                }
+            ]
+        })) {
+            Ok(body) => body,
+            Err(e) => return Err(format!("serde_json error: {}", e)),
+        };
+
+        // println!("[astralane/send_bundle] endpoint: {}", self.endpoint);
+        // println!("[astralane/send_bundle] api-key(header): {}", self.auth_token);
+        // println!("[astralane/send_bundle] request body: {}", request_body);
+
+        let res = self
+            .http_client
+            .post(&self.endpoint)
+            .header("Content-Type", "application/json")
+            .header("api-key", self.auth_token.as_str())
+            .body(request_body)
+            .send()
+            .await;
+
+        // println!("[astralane/send_bundle] res: {res:?}");
+        
+        let response = match res {
+            Ok(resp) => match resp.text().await {
+                Ok(text) => text,
+                Err(e) => {
+                    // println!("[astralane/send_bundle] response text error: {}", e);
+                    return Err(format!("response text error: {}", e));
+                }
+            },
+            Err(e) => {
+                log::error!("[astralane/send_bundle] send error: {:?}", e);
+                return Err(format!("send error: {}", e));
+            }
+        };
+
+        // println!("[astralane/send_bundle] raw response: {}", response);
+        log::info!("astralane raw response: {:?}", response);
+
+        // 尝试用结构体解析响应
+        match serde_json::from_str::<AstralaneSendBundleResponse>(&response) {
+            Ok(resp_obj) => {
+                if let Some(result) = resp_obj.result {
+                    log::info!("astralane bundle signatures: {:?}", result);
+                    Ok(sigs)
+                } else if let Some(err) = resp_obj.error {
+                    Err(format!("astralane error: {}", err))
+                } else {
+                    Err(format!("astralane unknown response: {}", response))
+                }
+            }
+            Err(e) => Err(format!(
+                "astralane response parse error: {}, raw: {}",
+                e, response
+            )),
+        }
     }
 }
 
@@ -137,147 +235,15 @@ impl crate::platform_clients::BuildTx for Astralane {
     // 使用默认实现，无需重写 build_tx
 }
 
-// #[async_trait::async_trait]
-// impl SwqosClientTrait for Astralane {
-//     async fn send_transaction(
-//         &self,
-//         ixs: Vec<Instruction>,
-//         signer: &Arc<Keypair>,
-//         feeparam: FeeParam,
-//         nonce_ix: Option<Instruction>,
-//     ) -> Option<(Signature, SuccessSwqos)> {
-//         if self.endpoints.is_empty() {
-//             log::error!("endpoints 不能为空");
-//             return None;
-//         }
+impl crate::platform_clients::BuildBundle for Astralane {
+    fn build_bundle<'a>(
+        &'a self,
+        txs: &[crate::platform_clients::SolTx],
+    ) -> crate::platform_clients::BundleEnvelope<'a, Astralane> {
+        crate::platform_clients::BundleEnvelope {
+            txs: txs.to_vec(),
+            sender: self,
+        }
+    }
+}
 
-//         // nonce 指令放在第一个
-//         let mut instructions = Vec::new();
-//         match nonce_ix {
-//             Some(nonce_ix) => instructions.extend(vec![nonce_ix]),
-//             None => {}
-//         }
-
-//         // tip 转账放在第二个
-//         let tip_address = self.get_tip_address();
-//         let tip = match feeparam.tip {
-//             Some(tip) => {
-//                 if tip < Self::MIN_TIP_AMOUNT {
-//                     return None;
-//                 } else {
-//                     tip
-//                 }
-//             }
-//             None => Self::MIN_TIP_AMOUNT,
-//         };
-//         let tip_ix = transfer(&signer.pubkey(), &tip_address, tip);
-//         instructions.push(tip_ix);
-
-//         // cu指令放在第三位如果有
-//         match feeparam.cu {
-//             Some(cu) => {
-//                 let limit_instruction = ComputeBudgetInstruction::set_compute_unit_limit(cu.0);
-//                 instructions.push(limit_instruction);
-//                 let price_instruction = ComputeBudgetInstruction::set_compute_unit_price(cu.1);
-//                 instructions.push(price_instruction);
-//             }
-//             None => {}
-//         };
-//         instructions.extend(ixs.into_iter());
-
-//         let tx = Transaction::new_signed_with_payer(
-//             &instructions,
-//             Some(&signer.pubkey()),
-//             &[signer],
-//             self.hash,
-//         );
-//         log::info!("{:?}", Instant::now());
-//         Some((
-//             tx.signatures[0],
-//             SuccessSwqos::Astralane(SendMethod::SendTransaction),
-//         ))
-//     }
-// }
-
-// #[async_trait::async_trait]
-// impl BundleClientTrait for Astralane {
-//     async fn send_bundle_transaction(
-//         &self,
-//         ixs: Vec<Instruction>,
-//         signer: &Arc<Keypair>,
-//         feeparam: FeeParam,
-//         nonce_ix: Option<Instruction>,
-//     ) -> Option<(Signature, SuccessSwqos)> {
-//         if self.endpoints.is_empty() {
-//             return None;
-//         }
-
-//         // nonce 指令放在第一个
-//         let mut instructions = Vec::new();
-//         match nonce_ix {
-//             Some(nonce_ix) => instructions.extend(vec![nonce_ix]),
-//             None => {}
-//         }
-
-//         // tip 转账放在第二个
-//         let tip_address = self.get_tip_address();
-//         let tip = match feeparam.tip {
-//             Some(tip) => {
-//                 if tip < Self::MIN_TIP_AMOUNT {
-//                     return None;
-//                 } else {
-//                     tip
-//                 }
-//             }
-//             None => Self::MIN_TIP_AMOUNT,
-//         };
-//         let tip_ix = transfer(&signer.pubkey(), &tip_address, tip);
-//         instructions.push(tip_ix);
-
-//         // cu指令放在第三位如果有
-//         match feeparam.cu {
-//             Some(cu) => {
-//                 let limit_instruction = ComputeBudgetInstruction::set_compute_unit_limit(cu.0);
-//                 instructions.push(limit_instruction);
-//                 let price_instruction = ComputeBudgetInstruction::set_compute_unit_price(cu.1);
-//                 instructions.push(price_instruction);
-//             }
-//             None => {}
-//         };
-//         instructions.extend(ixs.into_iter());
-
-//         let tx = Transaction::new_signed_with_payer(
-//             &instructions,
-//             Some(&signer.pubkey()),
-//             &[signer],
-//             self.hash,
-//         );
-
-//         let encode_txs = base64::prelude::BASE64_STANDARD.encode(&bincode::serialize(&tx).unwrap());
-
-//         let response = match self
-//             .http_client
-//             .post(&self.endpoints)
-//             .header("api_key", self.auth_token.as_str())
-//             .json(&json! ({
-//                 "jsonrpc": "2.0",
-//                 "id": 1,
-//                 "method": "sendBundle",
-//                 "params": [[encode_txs]],
-//             }))
-//             .send()
-//             .await
-//         {
-//             Ok(res) => res.text().await.unwrap(),
-//             Err(e) => {
-//                 log::error!("send error: {:?}", e);
-//                 return None;
-//             }
-//         };
-//         log::info!("astralane response: {:?}", response);
-//         Some((
-//             tx.signatures[0],
-//             SuccessSwqos::Astralane(SendMethod::SendTransaction),
-//         ))
-//     }
-// }
