@@ -368,7 +368,9 @@ pub async fn endpoint_keep_alive() {
             let elapsed = start.elapsed().as_millis();
             match response {
                 Ok(_) => {
-                    log::info!("{} ping successful, elapsed: {}ms", url, elapsed);
+                    if elapsed > 10 {
+                        log::warn!("{} ping successful, elapsed: {}ms", url, elapsed)
+                    }
                 }
                 Err(err) => {
                     log::error!("{} ping failed: {}, elapsed: {}ms", url, err, elapsed);
