@@ -165,10 +165,6 @@ impl crate::platform_clients::SendBundle for Astralane {
             Err(e) => return Err(format!("serde_json error: {}", e)),
         };
 
-        // println!("[astralane/send_bundle] endpoint: {}", self.endpoint);
-        // println!("[astralane/send_bundle] api-key(header): {}", self.auth_token);
-        // println!("[astralane/send_bundle] request body: {}", request_body);
-
         let res = self
             .http_client
             .post(&self.endpoint)
@@ -178,7 +174,6 @@ impl crate::platform_clients::SendBundle for Astralane {
             .send()
             .await;
 
-        // println!("[astralane/send_bundle] res: {res:?}");
         
         let response = match res {
             Ok(resp) => match resp.text().await {
@@ -194,7 +189,6 @@ impl crate::platform_clients::SendBundle for Astralane {
             }
         };
 
-        // println!("[astralane/send_bundle] raw response: {}", response);
         log::info!("astralane raw response: {:?}", response);
 
         // 尝试用结构体解析响应
