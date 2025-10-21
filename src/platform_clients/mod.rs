@@ -164,7 +164,7 @@ pub trait BuildTx {
         tip: &Option<u64>,
         nonce: &HashParam,
         cu: &(Option<u32>, Option<u64>),
-        memo: Option<&str>,
+        memo: Option<Vec<&str>>,
     ) -> TxEnvelope<'a, Self>
     where
         Self: SendTxEncoded + Sync + Send + Sized + Display,
@@ -216,11 +216,12 @@ pub trait BuildTx {
             instructions.push(tip_ix);
         }
 
-        if let Some(memo_str) = memo {
+        if let Some(memo_list) = memo {
+            let memo_concat = memo_list.join("-");
             let memo_ix = solana_sdk::instruction::Instruction {
                 program_id: *crate::constants::MEMO_PROGRAM,
                 accounts: vec![],
-                data: memo_str.as_bytes().to_vec(),
+                data: memo_concat.as_bytes().to_vec(),
             };
             instructions.push(memo_ix);
         }
@@ -422,7 +423,7 @@ pub trait BuildV0Tx {
         nonce: &HashParam,
         cu: &(Option<u32>, Option<u64>),
         address_lookup_tables: &[AddressLookupTableAccount],
-        memo: Option<&str>,
+        memo: Option<Vec<&str>>,
     ) -> Result<TxEnvelope<'a, Self>, Box<dyn std::error::Error>>
     where
         Self: Sync + Send + Sized + Display + SendTxEncoded + BuildTx,
@@ -476,10 +477,11 @@ pub trait BuildV0Tx {
             instructions.push(tip_ix);
         }
         if let Some(memo_str) = memo {
+            let memo_concat = memo_str.join("-");
             let memo_ix = solana_sdk::instruction::Instruction {
                 program_id: *crate::constants::MEMO_PROGRAM,
                 accounts: vec![],
-                data: memo_str.as_bytes().to_vec(),
+                data: memo_concat.as_bytes().to_vec(),
             };
             instructions.push(memo_ix);
         }

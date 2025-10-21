@@ -28,7 +28,7 @@ pub static JSON_RPC_CLIENT: LazyLock<RpcClient> = LazyLock::new(|| {
 });
 
 pub static REGION: LazyLock<Region> = LazyLock::new(|| {
-    let region_str = std::env::var("REGION").unwrap_or_else(|_| "NewYork".to_string());
+    let region_str = std::env::var("REGION").unwrap_or_else(|_| "Frankfurt".to_string());
     Region::from(region_str)
 });
 
@@ -40,6 +40,5 @@ pub static PAYER: LazyLock<Arc<Keypair>> = LazyLock::new(|| {
     log::info!("Using wallet : {}", keypair.pubkey());
     Arc::new(keypair)
 });
-pub static MEMO_PROGRAM: LazyLock<solana_sdk::pubkey::Pubkey> = LazyLock::new(|| {
-    pubkey!("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr")
-});
+pub static MEMO_PROGRAM: LazyLock<solana_sdk::pubkey::Pubkey> =
+    LazyLock::new(|| pubkey!("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"));

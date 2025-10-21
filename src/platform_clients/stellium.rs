@@ -32,7 +32,6 @@ pub const STELLIUM_ENDPOINTS: &[&str] = &[
     "http://ams1.flashrpc.com", // Amsterdam
 ];
 
-
 #[derive(Clone)]
 pub struct Stellium {
     pub endpoint: String,
@@ -50,7 +49,7 @@ impl Stellium {
             Region::NewYork => STELLIUM_ENDPOINTS[0].to_string(), // ewr1.flashrpc.com
             Region::Frankfurt => STELLIUM_ENDPOINTS[1].to_string(), // fra1.flashrpc.com
             Region::Amsterdam => STELLIUM_ENDPOINTS[2].to_string(), // ams1.flashrpc.com
-            _ => STELLIUM_ENDPOINTS[1].to_string(),                   
+            _ => STELLIUM_ENDPOINTS[1].to_string(),
         }
     }
 
