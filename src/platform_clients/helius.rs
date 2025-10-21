@@ -4,14 +4,11 @@ impl fmt::Display for Helius {
         write!(f, "Helius")
     }
 }
-use base64::Engine;
 use log::info;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
 use serde_json::json;
 use std::sync::Arc;
-
-use solana_sdk::{signature::Signature, transaction::Transaction};
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
@@ -22,14 +19,14 @@ use crate::platform_clients::{PlatformName, Region};
 pub const HELIUS_TIP_ACCOUNTS: &[Pubkey] = &[
     // pubkey!("4ACfpUFoaSD9bfPdeu6DBt89gB6ENTeHBXCAi87NhDEE"),
     pubkey!("D2L6yPZ2FmmmTKPgzaMKdhu6EWZcTpLy1Vhx8uvZe7NZ"),
-    // pubkey!("9bnz4RShgq1hAnLnZbP8kbgBg1kEmcJBYQq3gQbmnSta"),
-    // pubkey!("5VY91ws6B2hMmBFRsXkoAAdsPHBJwRfBht4DXox3xkwn"),
-    // pubkey!("2nyhqdwKcJZR2vcqCyrYsaPVdAnFoJjiksCXJ7hfEYgD"),
-    // pubkey!("2q5pghRs6arqVjRvT5gfgWfWcHWmw1ZuCzphgd5KfWGJ"),
-    // pubkey!("wyvPkWjVZz1M8fHQnMMCDTQDbkManefNNhweYk5WkcF"),
-    // pubkey!("3KCKozbAaF75qEU33jtzozcJ29yJuaLJTy2jFdzUY8bT"),
-    // pubkey!("4vieeGHPYPG2MmyPRcYjdiDmmhN3ww7hsFNap8pVN3Ey"),
-    // pubkey!("4TQLFNWK8AovT1gFvda5jfw2oJeRMKEmw7aH6MGBJ3or"),
+    pubkey!("9bnz4RShgq1hAnLnZbP8kbgBg1kEmcJBYQq3gQbmnSta"),
+    pubkey!("5VY91ws6B2hMmBFRsXkoAAdsPHBJwRfBht4DXox3xkwn"),
+    pubkey!("2nyhqdwKcJZR2vcqCyrYsaPVdAnFoJjiksCXJ7hfEYgD"),
+    pubkey!("2q5pghRs6arqVjRvT5gfgWfWcHWmw1ZuCzphgd5KfWGJ"),
+    pubkey!("wyvPkWjVZz1M8fHQnMMCDTQDbkManefNNhweYk5WkcF"),
+    pubkey!("3KCKozbAaF75qEU33jtzozcJ29yJuaLJTy2jFdzUY8bT"),
+    pubkey!("4vieeGHPYPG2MmyPRcYjdiDmmhN3ww7hsFNap8pVN3Ey"),
+    pubkey!("4TQLFNWK8AovT1gFvda5jfw2oJeRMKEmw7aH6MGBJ3or"),
 ];
 
 // helius 地址
@@ -86,13 +83,6 @@ impl Helius {
             auth_token,
             http_client,
         }
-    }
-
-    fn get_tip_address(&self) -> Pubkey {
-        *HELIUS_TIP_ACCOUNTS
-            .choose(&mut rand::rng())
-            .or_else(|| HELIUS_TIP_ACCOUNTS.first())
-            .unwrap()
     }
 }
 

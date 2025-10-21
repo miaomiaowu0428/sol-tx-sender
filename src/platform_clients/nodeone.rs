@@ -4,15 +4,11 @@ impl fmt::Display for NodeOne {
         write!(f, "NodeOne")
     }
 }
-
-use base64::Engine;
 use log::info;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
 use serde_json::json;
 use std::sync::Arc;
-
-use solana_sdk::{signature::Signature, transaction::Transaction};
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
@@ -22,10 +18,10 @@ use crate::platform_clients::{PlatformName, Region};
 pub const NODEONE_TIP_ACCOUNTS: &[Pubkey] = &[
     // pubkey!("node1PqAa3BWWzUnTHVbw8NJHC874zn9ngAkXjgWEej"),
     pubkey!("node1UzzTxAAeBTpfZkQPJXBAqixsbdth11ba1NXLBG"),
-    // pubkey!("node1Qm1bV4fwYnCurP8otJ9s5yrkPq7SPZ5uhj3Tsv"),
-    // pubkey!("node1PUber6SFmSQgvf2ECmXsHP5o3boRSGhvJyPMX1"),
-    // pubkey!("node1AyMbeqiVN6eoQzEAwCA6Pk826hrdqdAHR7cdJ3"),
-    // pubkey!("node1YtWCoTwwVYTFLfS19zquRQzYX332hs1HEuRBjC"),
+    pubkey!("node1Qm1bV4fwYnCurP8otJ9s5yrkPq7SPZ5uhj3Tsv"),
+    pubkey!("node1PUber6SFmSQgvf2ECmXsHP5o3boRSGhvJyPMX1"),
+    pubkey!("node1AyMbeqiVN6eoQzEAwCA6Pk826hrdqdAHR7cdJ3"),
+    pubkey!("node1YtWCoTwwVYTFLfS19zquRQzYX332hs1HEuRBjC"),
 ];
 
 // one one 地址
@@ -71,14 +67,6 @@ impl NodeOne {
             auth_token,
             http_client,
         }
-    }
-
-    // 随机获取一个tip地址
-    fn get_tip_address() -> Pubkey {
-        *NODEONE_TIP_ACCOUNTS
-            .choose(&mut rand::rng())
-            .or_else(|| NODEONE_TIP_ACCOUNTS.first())
-            .unwrap()
     }
 }
 

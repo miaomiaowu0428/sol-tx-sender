@@ -48,10 +48,10 @@ pub struct FlashBlock {
 
 #[derive(Debug, serde::Deserialize)]
 struct FlashBlockSendBundleResponse {
-    pub jsonrpc: Option<String>,
+    pub _jsonrpc: Option<String>,
     pub result: Option<String>,
     pub error: Option<serde_json::Value>,
-    pub id: Option<u64>,
+    pub _id: Option<u64>,
 }
 use std::fmt;
 impl fmt::Display for FlashBlock {

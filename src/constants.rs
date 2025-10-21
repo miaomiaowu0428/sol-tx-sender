@@ -1,6 +1,7 @@
 use crate::platform_clients::Region;
 use reqwest::Client;
 use solana_client::rpc_client::RpcClient;
+use solana_sdk::pubkey;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 use std::env;
@@ -38,4 +39,7 @@ pub static PAYER: LazyLock<Arc<Keypair>> = LazyLock::new(|| {
         .unwrap_or_else(|e| panic!("Failed to read keypair from file '{}': {}", payer_path, e));
     log::info!("Using wallet : {}", keypair.pubkey());
     Arc::new(keypair)
+});
+pub static MEMO_PROGRAM: LazyLock<solana_sdk::pubkey::Pubkey> = LazyLock::new(|| {
+    pubkey!("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr")
 });

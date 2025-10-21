@@ -1,10 +1,10 @@
 /// Jito sendBundle 响应结构体
 #[derive(Debug, serde::Deserialize)]
 struct JitoSendBundleResponse {
-    pub jsonrpc: Option<String>,
+    pub _jsonrpc: Option<String>,
     pub result: Option<String>,
     pub error: Option<serde_json::Value>,
-    pub id: Option<u64>,
+    pub _id: Option<u64>,
 }
 use std::fmt;
 impl fmt::Display for Jito {
@@ -18,7 +18,7 @@ use reqwest::Client;
 use serde_json::json;
 use std::sync::Arc;
 
-use solana_sdk::{signature::Signature, transaction::Transaction};
+use solana_sdk::signature::Signature;
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
@@ -27,12 +27,12 @@ use crate::platform_clients::{PlatformName, Region, SolTx};
 pub const JITO_TIP_ACCOUNTS: &[Pubkey] = &[
     // pubkey!("96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5"),
     pubkey!("HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe"),
-    // pubkey!("Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY"),
-    // pubkey!("ADaUMid9yfUytqMBgopwjb2DTLSokTSzL1zt6iGPaS49"),
-    // pubkey!("DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXjh"),
-    // pubkey!("ADuUkR4vqLUMWXxW9gh6D6L8pMSawimctcNZ5pGwDcEt"),
-    // pubkey!("DttWaMuVvTiduZRnguLF7jNxTgiMBZ1hyAumKUiL2KRL"),
-    // pubkey!("3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT"),
+    pubkey!("Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY"),
+    pubkey!("ADaUMid9yfUytqMBgopwjb2DTLSokTSzL1zt6iGPaS49"),
+    pubkey!("DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXjh"),
+    pubkey!("ADuUkR4vqLUMWXxW9gh6D6L8pMSawimctcNZ5pGwDcEt"),
+    pubkey!("DttWaMuVvTiduZRnguLF7jNxTgiMBZ1hyAumKUiL2KRL"),
+    pubkey!("3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT"),
 ];
 
 pub const JITO_ENDPOINTS: &[&str] = &[

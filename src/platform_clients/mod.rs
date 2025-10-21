@@ -164,6 +164,7 @@ pub trait BuildTx {
         tip: &Option<u64>,
         nonce: &HashParam,
         cu: &(Option<u32>, Option<u64>),
+        memo: Option<&str>,
     ) -> TxEnvelope<'a, Self>
     where
         Self: SendTxEncoded + Sync + Send + Sized + Display,
@@ -213,6 +214,15 @@ pub trait BuildTx {
             let tip_ix =
                 solana_sdk::system_instruction::transfer(&signer.pubkey(), &tip_address, tip_amt);
             instructions.push(tip_ix);
+        }
+
+        if let Some(memo_str) = memo {
+            let memo_ix = solana_sdk::instruction::Instruction {
+                program_id: *crate::constants::MEMO_PROGRAM,
+                accounts: vec![],
+                data: memo_str.as_bytes().to_vec(),
+            };
+            instructions.push(memo_ix);
         }
 
         // 用户指令
@@ -412,6 +422,7 @@ pub trait BuildV0Tx {
         nonce: &HashParam,
         cu: &(Option<u32>, Option<u64>),
         address_lookup_tables: &[AddressLookupTableAccount],
+        memo: Option<&str>,
     ) -> Result<TxEnvelope<'a, Self>, Box<dyn std::error::Error>>
     where
         Self: Sync + Send + Sized + Display + SendTxEncoded + BuildTx,
@@ -463,6 +474,14 @@ pub trait BuildV0Tx {
             );
             let tip_ix = system_instruction::transfer(&payer, &tip_address, tip_amt);
             instructions.push(tip_ix);
+        }
+        if let Some(memo_str) = memo {
+            let memo_ix = solana_sdk::instruction::Instruction {
+                program_id: *crate::constants::MEMO_PROGRAM,
+                accounts: vec![],
+                data: memo_str.as_bytes().to_vec(),
+            };
+            instructions.push(memo_ix);
         }
 
         // 用户指令

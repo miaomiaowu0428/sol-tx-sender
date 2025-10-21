@@ -8,10 +8,10 @@ impl fmt::Display for Astralane {
 /// Astralane sendBundle 响应结构体
 #[derive(Debug, serde::Deserialize)]
 struct AstralaneSendBundleResponse {
-    pub jsonrpc: Option<String>,
+    pub _jsonrpc: Option<String>,
     pub result: Option<Vec<String>>,
     pub error: Option<serde_json::Value>,
-    pub id: Option<u64>,
+    pub _id: Option<u64>,
 }
 
 use base64::Engine;
@@ -30,8 +30,8 @@ use crate::platform_clients::{PlatformName, Region};
 pub const ASTRALANE_TIP_ACCOUNTS: &[Pubkey] = &[
     // pubkey!("astrazznxsGUhWShqgNtAdfrzP2G83DzcWVJDxwV9bF"),
     pubkey!("astra4uejePWneqNaJKuFFA8oonqCE1sqF6b45kDMZm"),
-    // pubkey!("astra9xWY93QyfG6yM8zwsKsRodscjQ2uU2HKNL5prk"),
-    // pubkey!("astraRVUuTHjpwEVvNBeQEgwYx9w9CFyfxjYoobCZhL"),
+    pubkey!("astra9xWY93QyfG6yM8zwsKsRodscjQ2uU2HKNL5prk"),
+    pubkey!("astraRVUuTHjpwEVvNBeQEgwYx9w9CFyfxjYoobCZhL"),
 ];
 
 pub const ASTRALANE_ENDPOINTS: &[&str] = &[
@@ -74,13 +74,6 @@ impl Astralane {
             auth_token,
             http_client,
         }
-    }
-
-    fn get_tip_address(&self) -> Pubkey {
-        *ASTRALANE_TIP_ACCOUNTS
-            .choose(&mut rand::rng())
-            .or_else(|| ASTRALANE_TIP_ACCOUNTS.first())
-            .unwrap()
     }
 }
 
@@ -174,7 +167,6 @@ impl crate::platform_clients::SendBundle for Astralane {
             .send()
             .await;
 
-        
         let response = match res {
             Ok(resp) => match resp.text().await {
                 Ok(text) => text,
@@ -240,4 +232,3 @@ impl crate::platform_clients::BuildBundle for Astralane {
         }
     }
 }
-
