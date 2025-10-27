@@ -32,6 +32,10 @@ pub const ASTRALANE_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("astra4uejePWneqNaJKuFFA8oonqCE1sqF6b45kDMZm"),
     pubkey!("astra9xWY93QyfG6yM8zwsKsRodscjQ2uU2HKNL5prk"),
     pubkey!("astraRVUuTHjpwEVvNBeQEgwYx9w9CFyfxjYoobCZhL"),
+    pubkey!("astraEJ2fEj8Xmy6KLG7B3VfbKfsHXhHrNdCQx7iGJK"),
+    pubkey!("astraubkDw81n4LuutzSQ8uzHCv4BhPVhfvTcYv8SKC"),
+    pubkey!("astraZW5GLFefxNPAatceHhYjfA1ciq9gvfEg2S47xk"),
+    pubkey!("astrawVNP4xDBKT7rAdxrLYiTSTdqtUr63fSMduivXK"),
 ];
 
 pub const ASTRALANE_ENDPOINTS: &[&str] = &[

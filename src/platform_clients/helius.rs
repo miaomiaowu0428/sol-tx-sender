@@ -48,7 +48,7 @@ pub struct Helius {
 }
 
 impl Helius {
-    pub const MIN_TIP_AMOUNT_TX: u64 = 0_000_001_000; // 单笔交易最低 tip  
+    pub const MIN_TIP_AMOUNT_TX: u64 = 0_000_005_000; // 单笔交易最低 tip  
     pub const DEFAULT_TPS: u64 = 6;
 
     pub fn get_endpoint() -> String {
