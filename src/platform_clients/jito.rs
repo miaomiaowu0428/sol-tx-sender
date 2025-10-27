@@ -103,9 +103,9 @@ impl crate::platform_clients::SendTxEncoded for Jito {
         let request_body = match serde_json::to_string(&json!({
             "id": 1,
             "jsonrpc": "2.0",
-            "method": "sendTransaction",
+            "method": "sendBundle",
             "params": [
-                tx_base64,
+                [tx_base64],
                 { "encoding": "base64" }
             ]
         })) {
