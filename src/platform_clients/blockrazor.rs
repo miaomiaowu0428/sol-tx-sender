@@ -47,7 +47,7 @@ pub struct Blockrazor {
 }
 
 impl Blockrazor {
-    pub const MIN_TIP_AMOUNT_TX: u64 = 000_100_000; // 单笔交易最低 tip
+    pub const MIN_TIP_AMOUNT_TX: u64 = 0_001_000_000; // 单笔交易最低 tip
     pub const DEFAULT_TPS: u64 = 1;
 
     pub fn new() -> Self {
