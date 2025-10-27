@@ -112,7 +112,7 @@ impl crate::platform_clients::SendTxEncoded for Jito {
             Ok(body) => body,
             Err(e) => return Err(format!("serde_json error: {}", e)),
         };
-        let url = format!("{}/api/v1/transactions", self.endpoint);
+        let url = format!("{}/api/v1/bundles", self.endpoint);
         let res = self
             .http_client
             .post(&url)
