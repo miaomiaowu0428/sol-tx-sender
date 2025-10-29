@@ -115,6 +115,7 @@ pub struct DetailedTx {
 
 // 交易组装 trait
 /// 交易哈希参数，支持普通 blockhash 和 nonce account
+#[derive(Debug,Clone,Copy)]
 pub enum HashParam {
     Blockhash(Hash),
     NonceAccount {
