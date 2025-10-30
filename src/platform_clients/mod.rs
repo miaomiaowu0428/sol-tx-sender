@@ -1,7 +1,10 @@
+use solana_compute_budget_interface::ComputeBudgetInstruction;
+use solana_sdk::message::AddressLookupTableAccount;
 use solana_sdk::transaction::Transaction;
 
-use solana_sdk::address_lookup_table::AddressLookupTableAccount;
 use solana_sdk::transaction::VersionedTransaction;
+use solana_system_interface::instruction::advance_nonce_account;
+use solana_system_interface::instruction::transfer;
 use std::fmt::Display;
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,7 +16,6 @@ use solana_sdk::instruction::Instruction;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::{Keypair, Signature};
 use solana_sdk::signer::Signer;
-
 use crate::constants::HTTP_CLIENT;
 pub mod astralane;
 pub mod blockrazor;
@@ -179,7 +181,7 @@ pub trait BuildTx {
                 account, authority, ..
             } => {
                 let nonce_ix =
-                    solana_sdk::system_instruction::advance_nonce_account(account, authority);
+                    advance_nonce_account(account, authority);
                 instructions.push(nonce_ix);
             }
         }
@@ -187,14 +189,14 @@ pub trait BuildTx {
         // cu 指令（某些平台要求在 tip 之前）
         if let Some(cu_limit) = cu.0 {
             let limit_instruction =
-                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(
+                ComputeBudgetInstruction::set_compute_unit_limit(
                     cu_limit,
                 );
             instructions.push(limit_instruction);
         }
         if let Some(cu_price) = cu.1 {
             let price_instruction =
-                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(
+                ComputeBudgetInstruction::set_compute_unit_price(
                     cu_price,
                 );
             instructions.push(price_instruction);
@@ -213,7 +215,7 @@ pub trait BuildTx {
                 tip_address
             );
             let tip_ix =
-                solana_sdk::system_instruction::transfer(&signer.pubkey(), &tip_address, tip_amt);
+                transfer(&signer.pubkey(), &tip_address, tip_amt);
             instructions.push(tip_ix);
         }
 
@@ -430,7 +432,6 @@ pub trait BuildV0Tx {
         Self: Sync + Send + Sized + Display + SendTxEncoded + BuildTx,
     {
         use solana_sdk::message::v0::Message as V0Message;
-        use solana_sdk::system_instruction;
         use solana_sdk::transaction::VersionedTransaction;
 
         let hash = *nonce.hash();
@@ -442,21 +443,21 @@ pub trait BuildV0Tx {
             account, authority, ..
         } = nonce
         {
-            let nonce_ix = system_instruction::advance_nonce_account(account, authority);
+            let nonce_ix = advance_nonce_account(account, authority);
             instructions.push(nonce_ix);
         }
 
         // cu 指令
         if let Some(cu_limit) = cu.0 {
             let limit_instruction =
-                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(
+                ComputeBudgetInstruction::set_compute_unit_limit(
                     cu_limit,
                 );
             instructions.push(limit_instruction);
         }
         if let Some(cu_price) = cu.1 {
             let price_instruction =
-                solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(
+                ComputeBudgetInstruction::set_compute_unit_price(
                     cu_price,
                 );
             instructions.push(price_instruction);
@@ -474,7 +475,7 @@ pub trait BuildV0Tx {
                 self,
                 tip_address
             );
-            let tip_ix = system_instruction::transfer(&payer, &tip_address, tip_amt);
+            let tip_ix = transfer(&payer, &tip_address, tip_amt);
             instructions.push(tip_ix);
         }
         if let Some(memo_str) = memo {
