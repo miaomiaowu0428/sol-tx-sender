@@ -10,6 +10,7 @@ use rand::seq::IndexedRandom;
 use reqwest::Client;
 use serde_json::json;
 use std::sync::Arc;
+use utils::log_time;
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
@@ -93,35 +94,37 @@ impl NextBlock {
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for NextBlock {
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
-        let url = format!("{}/api/v2/submit", self.endpoint);
+        log_time!("next block send: ", {
+            let url = format!("{}/api/v2/submit", self.endpoint);
 
-        let res = self
-            .http_client
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .header("Authorization", &self.auth_token)
-            .json(&json! ({
-                "transaction": {
-                    "content": tx_base64
+            let res = self
+                .http_client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .header("Authorization", &self.auth_token)
+                .json(&json! ({
+                    "transaction": {
+                        "content": tx_base64
+                    },
+                    "frontRunningProtection": true
+                }))
+                .send()
+                .await;
+
+            let response = match res {
+                Ok(resp) => match resp.text().await {
+                    Ok(text) => text,
+                    Err(e) => return Err(format!("response text error: {}", e)),
                 },
-                "frontRunningProtection": true
-            }))
-            .send()
-            .await;
+                Err(e) => {
+                    log::error!("NextBlock send error: {:?}", e);
+                    return Err(format!("send error: {}", e));
+                }
+            };
 
-        let response = match res {
-            Ok(resp) => match resp.text().await {
-                Ok(text) => text,
-                Err(e) => return Err(format!("response text error: {}", e)),
-            },
-            Err(e) => {
-                log::error!("NextBlock send error: {:?}", e);
-                return Err(format!("send error: {}", e));
-            }
-        };
-
-        info!("NextBlock response: {}", response);
-        Ok(())
+            info!("NextBlock response: {}", response);
+            Ok(())
+        })
     }
 }
 

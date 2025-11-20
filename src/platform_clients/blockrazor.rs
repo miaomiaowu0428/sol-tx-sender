@@ -4,10 +4,12 @@ impl fmt::Display for Blockrazor {
         write!(f, "Blockrazor")
     }
 }
+use log::info;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
 use serde_json::json;
 use std::sync::Arc;
+use utils::log_time;
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
@@ -103,29 +105,31 @@ fn read_auth_token_from_env() -> String {
 #[async_trait::async_trait]
 impl SendTxEncoded for Blockrazor {
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
-        let res = self
-            .http_client
-            .post(&self.endpoint)
-            .header("Content-Type", "application/json")
-            .header("apikey", self.auth_token.as_str())
-            .json(&json!({
-                "transaction": tx_base64,
-                "mode": "fast"
-            }))
-            .send()
-            .await;
-        let response = match res {
-            Ok(resp) => match resp.text().await {
-                Ok(text) => text,
-                Err(e) => return Err(format!("response text error: {}", e)),
-            },
-            Err(e) => {
-                log::error!("send error: {:?}", e);
-                return Err(format!("send error: {}", e));
-            }
-        };
-        log::info!("{:?}", response);
-        Ok(())
+        log_time!("blockrazor send:", {
+            let res = self
+                .http_client
+                .post(&self.endpoint)
+                .header("Content-Type", "application/json")
+                .header("apikey", self.auth_token.as_str())
+                .json(&json!({
+                    "transaction": tx_base64,
+                    "mode": "fast"
+                }))
+                .send()
+                .await;
+            let response = match res {
+                Ok(resp) => match resp.text().await {
+                    Ok(text) => text,
+                    Err(e) => return Err(format!("response text error: {}", e)),
+                },
+                Err(e) => {
+                    log::error!("send error: {:?}", e);
+                    return Err(format!("send error: {}", e));
+                }
+            };
+            log::info!("{:?}", response);
+            Ok(())
+        })
     }
 }
 

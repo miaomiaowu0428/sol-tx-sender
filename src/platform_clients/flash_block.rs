@@ -1,9 +1,11 @@
 use base64::Engine;
+use log::info;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
 use serde_json::json;
 use std::env;
 use std::sync::Arc;
+use utils::log_time;
 
 use solana_sdk::signature::Signature;
 
@@ -107,56 +109,58 @@ impl FlashBlock {
 #[async_trait::async_trait]
 impl SendTxEncoded for FlashBlock {
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
-        let request_body = match serde_json::to_string(&json!({
-            "id": 1,
-            "jsonrpc": "2.0",
-            "method": "sendBundle",
-            "params": [
-                [tx_base64],
-                { "encoding": "base64" }
-            ]
-        })) {
-            Ok(body) => body,
-            Err(e) => return Err(format!("serde_json error: {}", e)),
-        };
-        let url = format!("{}/", self.endpoint);
+        log_time!("flash block send:", {
+            let request_body = match serde_json::to_string(&json!({
+                "id": 1,
+                "jsonrpc": "2.0",
+                "method": "sendBundle",
+                "params": [
+                    [tx_base64],
+                    { "encoding": "base64" }
+                ]
+            })) {
+                Ok(body) => body,
+                Err(e) => return Err(format!("serde_json error: {}", e)),
+            };
+            let url = format!("{}/", self.endpoint);
 
-        let res = self
-            .http_client
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .header("Authorization", self.auth_token.clone())
-            .body(request_body)
-            .send()
-            .await;
-        let response = match res {
-            Ok(resp) => match resp.text().await {
-                Ok(text) => text,
-                Err(e) => return Err(format!("response text error: {}", e)),
-            },
-            Err(e) => {
-                log::error!("send error: {:?}", e);
-                return Err(format!("send error: {}", e));
-            }
-        };
-        log::info!("flashblock raw response: {:?}", response);
-        // 尝试用结构体解析响应
-        match serde_json::from_str::<FlashBlockSendBundleResponse>(&response) {
-            Ok(resp_obj) => {
-                if let Some(result) = resp_obj.result {
-                    log::info!("flashblock bundle id: {}", result);
-                    Ok(())
-                } else if let Some(err) = resp_obj.error {
-                    Err(format!("flashblock error: {}", err))
-                } else {
-                    Err(format!("flashblock unknown response: {}", response))
+            let res = self
+                .http_client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .header("Authorization", self.auth_token.clone())
+                .body(request_body)
+                .send()
+                .await;
+            let response = match res {
+                Ok(resp) => match resp.text().await {
+                    Ok(text) => text,
+                    Err(e) => return Err(format!("response text error: {}", e)),
+                },
+                Err(e) => {
+                    log::error!("send error: {:?}", e);
+                    return Err(format!("send error: {}", e));
                 }
+            };
+            log::info!("flashblock raw response: {:?}", response);
+            // 尝试用结构体解析响应
+            match serde_json::from_str::<FlashBlockSendBundleResponse>(&response) {
+                Ok(resp_obj) => {
+                    if let Some(result) = resp_obj.result {
+                        log::info!("flashblock bundle id: {}", result);
+                        Ok(())
+                    } else if let Some(err) = resp_obj.error {
+                        Err(format!("flashblock error: {}", err))
+                    } else {
+                        Err(format!("flashblock unknown response: {}", response))
+                    }
+                }
+                Err(e) => Err(format!(
+                    "flashblock response parse error: {}, raw: {}",
+                    e, response
+                )),
             }
-            Err(e) => Err(format!(
-                "flashblock response parse error: {}, raw: {}",
-                e, response
-            )),
-        }
+        })
     }
 }
 

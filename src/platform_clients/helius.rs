@@ -9,6 +9,7 @@ use rand::seq::IndexedRandom;
 use reqwest::Client;
 use serde_json::json;
 use std::sync::Arc;
+use utils::log_time;
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
@@ -89,38 +90,40 @@ impl Helius {
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for Helius {
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
-        let res = self
-            .http_client
-            .post(&self.endpoint)
-            .header("Content-Type", "application/json")
-            .header("api-key", self.auth_token.as_str())
-            .json(&json!({
-                "id": 1,
-                "jsonrpc": "2.0",
-                "method": "sendTransaction",
-                "params": [
-                    tx_base64,
-                    {
-                        "encoding": "base64",
-                        "skipPreflight": true,
-                        "maxRetries": 0,
-                    }
-                ],
-            }))
-            .send()
-            .await;
-        let response = match res {
-            Ok(resp) => match resp.text().await {
-                Ok(text) => text,
-                Err(e) => return Err(format!("response text error: {}", e)),
-            },
-            Err(e) => {
-                log::error!("send error: {:?}", e);
-                return Err(format!("send error: {}", e));
-            }
-        };
-        info!("helius: {}", response);
-        Ok(())
+        log_time!("helius send: ", {
+            let res = self
+                .http_client
+                .post(&self.endpoint)
+                .header("Content-Type", "application/json")
+                .header("api-key", self.auth_token.as_str())
+                .json(&json!({
+                    "id": 1,
+                    "jsonrpc": "2.0",
+                    "method": "sendTransaction",
+                    "params": [
+                        tx_base64,
+                        {
+                            "encoding": "base64",
+                            "skipPreflight": true,
+                            "maxRetries": 0,
+                        }
+                    ],
+                }))
+                .send()
+                .await;
+            let response = match res {
+                Ok(resp) => match resp.text().await {
+                    Ok(text) => text,
+                    Err(e) => return Err(format!("response text error: {}", e)),
+                },
+                Err(e) => {
+                    log::error!("send error: {:?}", e);
+                    return Err(format!("send error: {}", e));
+                }
+            };
+            info!("helius: {}", response);
+            Ok(())
+        })
     }
 }
 

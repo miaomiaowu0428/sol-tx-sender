@@ -19,3 +19,4 @@ solana-sdk = "3.0.0"
 solana-client = "3.0.8"
 solana-compute-budget-interface = "3.0.0"
 solana-system-interface = "2.0.0"
+utils = { git = "https://github.com/miaomiaowu0428/sol-utils.git" }

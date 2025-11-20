@@ -3,6 +3,7 @@ use rand::seq::IndexedRandom;
 use reqwest::Client;
 use serde_json::json;
 use std::sync::Arc;
+use utils::log_time;
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
@@ -78,40 +79,42 @@ impl Temporal {
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for Temporal {
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
-        let mut url = String::with_capacity(self.endpoint.len() + self.token.len() + 20);
-        url.push_str(&self.endpoint);
-        url.push_str("?c=");
-        url.push_str(&self.token);
-        let res = self
-            .http_client
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .json(&json! ({
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "sendTransaction",
-                "params": [
-                    tx_base64,
-                    {
-                        "encoding": "base64",
-                        "skipPreflight": true,
-                    }
-                ],
-            }))
-            .send()
-            .await;
-        let response = match res {
-            Ok(resp) => match resp.text().await {
-                Ok(text) => text,
-                Err(e) => return Err(format!("response text error: {}", e)),
-            },
-            Err(e) => {
-                log::error!("send error: {:?}", e);
-                return Err(format!("send error: {}", e));
-            }
-        };
-        info!("temporal: {}", response);
-        Ok(())
+        log_time!("temproal send: ", {
+            let mut url = String::with_capacity(self.endpoint.len() + self.token.len() + 20);
+            url.push_str(&self.endpoint);
+            url.push_str("?c=");
+            url.push_str(&self.token);
+            let res = self
+                .http_client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .json(&json! ({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "sendTransaction",
+                    "params": [
+                        tx_base64,
+                        {
+                            "encoding": "base64",
+                            "skipPreflight": true,
+                        }
+                    ],
+                }))
+                .send()
+                .await;
+            let response = match res {
+                Ok(resp) => match resp.text().await {
+                    Ok(text) => text,
+                    Err(e) => return Err(format!("response text error: {}", e)),
+                },
+                Err(e) => {
+                    log::error!("send error: {:?}", e);
+                    return Err(format!("send error: {}", e));
+                }
+            };
+            info!("temporal: {}", response);
+            Ok(())
+        })
     }
 }
 

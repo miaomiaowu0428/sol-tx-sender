@@ -15,10 +15,12 @@ struct AstralaneSendBundleResponse {
 }
 
 use base64::Engine;
+use log::info;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
 use serde_json::json;
 use std::sync::Arc;
+use utils::log_time;
 
 use solana_sdk::signature::Signature;
 
@@ -84,46 +86,48 @@ impl Astralane {
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for Astralane {
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
-        let req_json = json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "sendTransaction",
-            "params": [
-                tx_base64,
-                {
-                    "encoding": "base64",
-                    "skipPreflight": true,
+        log_time!("astralane send: ", {
+            let req_json = json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "sendTransaction",
+                "params": [
+                    tx_base64,
+                    {
+                        "encoding": "base64",
+                        "skipPreflight": true,
+                    },
+                    { "mevProtect": true }
+                ],
+            });
+            // println!("[astralane/send_tx] endpoint: {}", self.endpoint);
+            // println!("[astralane/send_tx] api-key(header): {}", self.auth_token);
+            // println!("[astralane/send_tx] request body: {}", req_json);
+            let res = self
+                .http_client
+                .post(&self.endpoint)
+                .header("Content-Type", "application/json")
+                .header("api-key", self.auth_token.as_str())
+                .json(&req_json)
+                .send()
+                .await;
+            // println!("[astralane/send_tx] res: {res:?}");
+            let response = match res {
+                Ok(resp) => match resp.text().await {
+                    Ok(text) => text,
+                    Err(e) => {
+                        // println!("[astralane/send_tx] response text error: {}", e);
+                        return Err(format!("response text error: {}", e));
+                    }
                 },
-                { "mevProtect": true }
-            ],
-        });
-        // println!("[astralane/send_tx] endpoint: {}", self.endpoint);
-        // println!("[astralane/send_tx] api-key(header): {}", self.auth_token);
-        // println!("[astralane/send_tx] request body: {}", req_json);
-        let res = self
-            .http_client
-            .post(&self.endpoint)
-            .header("Content-Type", "application/json")
-            .header("api-key", self.auth_token.as_str())
-            .json(&req_json)
-            .send()
-            .await;
-        // println!("[astralane/send_tx] res: {res:?}");
-        let response = match res {
-            Ok(resp) => match resp.text().await {
-                Ok(text) => text,
                 Err(e) => {
-                    // println!("[astralane/send_tx] response text error: {}", e);
-                    return Err(format!("response text error: {}", e));
+                    // println!("[astralane/send_tx] send error: {}", e);
+                    return Err(format!("send error: {}", e));
                 }
-            },
-            Err(e) => {
-                // println!("[astralane/send_tx] send error: {}", e);
-                return Err(format!("send error: {}", e));
-            }
-        };
-        // println!("[astralane/send_tx] response: {}", response);
-        Ok(())
+            };
+            // println!("[astralane/send_tx] response: {}", response);
+            Ok(())
+        })
     }
 }
 

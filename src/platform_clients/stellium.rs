@@ -4,7 +4,7 @@ impl fmt::Display for Stellium {
         write!(f, "Stellium")
     }
 }
-
+use utils::log_time;
 use log::info;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
@@ -30,6 +30,8 @@ pub const STELLIUM_ENDPOINTS: &[&str] = &[
     "http://ewr1.flashrpc.com", // New York (EWR)
     "http://fra1.flashrpc.com", // Frankfurt
     "http://ams1.flashrpc.com", // Amsterdam
+    "http://lhr1.flashrpc.com", // london
+    "http://tyo1.flashrpc.com", // tokio
 ];
 
 #[derive(Clone)]
@@ -49,6 +51,8 @@ impl Stellium {
             Region::NewYork => STELLIUM_ENDPOINTS[0].to_string(), // ewr1.flashrpc.com
             Region::Frankfurt => STELLIUM_ENDPOINTS[1].to_string(), // fra1.flashrpc.com
             Region::Amsterdam => STELLIUM_ENDPOINTS[2].to_string(), // ams1.flashrpc.com
+            Region::London => STELLIUM_ENDPOINTS[3].to_string(),
+            Region::Tokyo => STELLIUM_ENDPOINTS[4].to_string(),
             _ => STELLIUM_ENDPOINTS[1].to_string(),
         }
     }
@@ -78,69 +82,71 @@ impl Stellium {
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for Stellium {
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
-        // URL 格式：https://STELLIUM_ENDPOINT/$APIKEY
-        let url = format!("{}/{}", self.endpoint, self.api_key);
+        log_time!("stellium send: ",{
+            // URL 格式：https://STELLIUM_ENDPOINT/$APIKEY
+            let url = format!("{}/{}", self.endpoint, self.api_key);
 
-        // 生成唯一的请求 ID（使用时间戳）
-        let request_id = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-            .to_string();
+            // 生成唯一的请求 ID（使用时间戳）
+            let request_id = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+                .to_string();
 
-        let res = self
-            .http_client
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .json(&json!({
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "method": "sendTransaction",
-                "params": [
-                    tx_base64,
-                    { "encoding": "base64" }
-                ]
-            }))
-            .send()
-            .await;
+            let res = self
+                .http_client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .json(&json!({
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "method": "sendTransaction",
+                    "params": [
+                        tx_base64,
+                        { "encoding": "base64" }
+                    ]
+                }))
+                .send()
+                .await;
 
-        let response = match res {
-            Ok(resp) => match resp.text().await {
-                Ok(text) => text,
-                Err(e) => return Err(format!("response text error: {}", e)),
-            },
-            Err(e) => {
-                log::error!("Stellium send error: {:?}", e);
-                return Err(format!("send error: {}", e));
+            let response = match res {
+                Ok(resp) => match resp.text().await {
+                    Ok(text) => text,
+                    Err(e) => return Err(format!("response text error: {}", e)),
+                },
+                Err(e) => {
+                    log::error!("Stellium send error: {:?}", e);
+                    return Err(format!("send error: {}", e));
+                }
+            };
+
+            info!("Stellium response: {}", response);
+
+            // 解析响应
+            let parsed_response: serde_json::Value = serde_json::from_str(&response)
+                .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+            // 检查是否有错误
+            if let Some(error) = parsed_response.get("error") {
+                let error_code = error.get("code").and_then(|c| c.as_i64()).unwrap_or(-1);
+                let error_message = error
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("Unknown error");
+                return Err(format!(
+                    "Stellium error (code {}): {}",
+                    error_code, error_message
+                ));
             }
-        };
 
-        info!("Stellium response: {}", response);
-
-        // 解析响应
-        let parsed_response: serde_json::Value = serde_json::from_str(&response)
-            .map_err(|e| format!("Failed to parse response: {}", e))?;
-
-        // 检查是否有错误
-        if let Some(error) = parsed_response.get("error") {
-            let error_code = error.get("code").and_then(|c| c.as_i64()).unwrap_or(-1);
-            let error_message = error
-                .get("message")
-                .and_then(|m| m.as_str())
-                .unwrap_or("Unknown error");
-            return Err(format!(
-                "Stellium error (code {}): {}",
-                error_code, error_message
-            ));
-        }
-
-        // 检查是否有结果
-        if let Some(signature) = parsed_response.get("result").and_then(|r| r.as_str()) {
-            info!("Stellium transaction signature: {}", signature);
-            Ok(())
-        } else {
-            Err("Invalid response format from Stellium".to_string())
-        }
+            // 检查是否有结果
+            if let Some(signature) = parsed_response.get("result").and_then(|r| r.as_str()) {
+                info!("Stellium transaction signature: {}", signature);
+                Ok(())
+            } else {
+                Err("Invalid response format from Stellium".to_string())
+            }
+        })
     }
 }
 

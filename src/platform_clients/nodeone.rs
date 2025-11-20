@@ -9,6 +9,7 @@ use rand::seq::IndexedRandom;
 use reqwest::Client;
 use serde_json::json;
 use std::sync::Arc;
+use utils::log_time;
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
@@ -73,31 +74,33 @@ impl NodeOne {
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for NodeOne {
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
-        let res = self
-            .http_client
-            .post(&self.endpoint)
-            .header("Content-Type", "application/json")
-            .header("api-key", self.auth_token.as_str())
-            .json(&json! ({
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "sendTransaction",
-                "params": [tx_base64],
-            }))
-            .send()
-            .await;
-        let response = match res {
-            Ok(resp) => match resp.text().await {
-                Ok(text) => text,
-                Err(e) => return Err(format!("response text error: {}", e)),
-            },
-            Err(e) => {
-                log::error!("send error: {:?}", e);
-                return Err(format!("send error: {}", e));
-            }
-        };
-        info!("node1: {}", response);
-        Ok(())
+        log_time!("node1 send: ", {
+            let res = self
+                .http_client
+                .post(&self.endpoint)
+                .header("Content-Type", "application/json")
+                .header("api-key", self.auth_token.as_str())
+                .json(&json! ({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "sendTransaction",
+                    "params": [tx_base64],
+                }))
+                .send()
+                .await;
+            let response = match res {
+                Ok(resp) => match resp.text().await {
+                    Ok(text) => text,
+                    Err(e) => return Err(format!("response text error: {}", e)),
+                },
+                Err(e) => {
+                    log::error!("send error: {:?}", e);
+                    return Err(format!("send error: {}", e));
+                }
+            };
+            info!("node1: {}", response);
+            Ok(())
+        })
     }
 }
 
