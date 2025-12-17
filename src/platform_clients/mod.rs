@@ -10,15 +10,16 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
 
+use crate::constants::HTTP_CLIENT;
 use log::info;
 use solana_sdk::hash::Hash;
 use solana_sdk::instruction::Instruction;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::{Keypair, Signature};
 use solana_sdk::signer::Signer;
-use crate::constants::HTTP_CLIENT;
 pub mod astralane;
 pub mod blockrazor;
+pub mod ever_stake;
 pub mod flash_block;
 pub mod helius;
 pub mod jito;
@@ -84,6 +85,7 @@ pub enum PlatformName {
     FlashBlock,
     Nextblock,
     Stellium,
+    EverStake,
 }
 
 /// 平台枚举的字符串展示实现
@@ -100,6 +102,7 @@ impl std::fmt::Display for PlatformName {
             PlatformName::FlashBlock => "FlashBlock",
             PlatformName::Nextblock => "Nextblock",
             PlatformName::Stellium => "Stellium",
+            PlatformName::EverStake => "EverStake",
         };
         write!(f, "{}", name)
     }
@@ -117,7 +120,7 @@ pub struct DetailedTx {
 
 // 交易组装 trait
 /// 交易哈希参数，支持普通 blockhash 和 nonce account
-#[derive(Debug,Clone,Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum HashParam {
     Blockhash(Hash),
     NonceAccount {
@@ -180,26 +183,15 @@ pub trait BuildTx {
             HashParam::NonceAccount {
                 account, authority, ..
             } => {
-                let nonce_ix =
-                    advance_nonce_account(account, authority);
-                instructions.push(nonce_ix);
+                instructions.push(advance_nonce_account(account, authority));
             }
         }
 
-        // cu 指令（某些平台要求在 tip 之前）
         if let Some(cu_limit) = cu.0 {
-            let limit_instruction =
-                ComputeBudgetInstruction::set_compute_unit_limit(
-                    cu_limit,
-                );
-            instructions.push(limit_instruction);
+            instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(cu_limit));
         }
         if let Some(cu_price) = cu.1 {
-            let price_instruction =
-                ComputeBudgetInstruction::set_compute_unit_price(
-                    cu_price,
-                );
-            instructions.push(price_instruction);
+            instructions.push(ComputeBudgetInstruction::set_compute_unit_price(cu_price));
         }
 
         // tip 转账
@@ -214,8 +206,7 @@ pub trait BuildTx {
                 self,
                 tip_address
             );
-            let tip_ix =
-                transfer(&signer.pubkey(), &tip_address, tip_amt);
+            let tip_ix = transfer(&signer.pubkey(), &tip_address, tip_amt);
             instructions.push(tip_ix);
         }
 
@@ -395,26 +386,6 @@ pub async fn endpoint_keep_alive() {
     }
 }
 
-#[test]
-fn test_region() {
-    let regions = &[
-        "NewYork",
-        "Frankfurt",
-        "Amsterdam",
-        "London",
-        "SaltLakeCity",
-        "Tokyo",
-        "LosAngeles",
-        "Pittsburgh",
-        "Singapore",
-        "Unknown",
-    ];
-
-    for region in regions {
-        println!("{}, {:?}", region, Region::from(region));
-    }
-}
-
 /// V0 交易组装 trait，直接使用默认实现即可
 pub trait BuildV0Tx {
     /// 默认 V0 交易组装实现，支持 tip、cu、nonce、lookup table 等参数
@@ -449,17 +420,11 @@ pub trait BuildV0Tx {
 
         // cu 指令
         if let Some(cu_limit) = cu.0 {
-            let limit_instruction =
-                ComputeBudgetInstruction::set_compute_unit_limit(
-                    cu_limit,
-                );
+            let limit_instruction = ComputeBudgetInstruction::set_compute_unit_limit(cu_limit);
             instructions.push(limit_instruction);
         }
         if let Some(cu_price) = cu.1 {
-            let price_instruction =
-                ComputeBudgetInstruction::set_compute_unit_price(
-                    cu_price,
-                );
+            let price_instruction = ComputeBudgetInstruction::set_compute_unit_price(cu_price);
             instructions.push(price_instruction);
         }
 
@@ -520,3 +485,24 @@ impl BuildV0Tx for zeroslot::ZeroSlot {}
 impl BuildV0Tx for flash_block::FlashBlock {}
 impl BuildV0Tx for nextblock::NextBlock {}
 impl BuildV0Tx for stellium::Stellium {}
+impl BuildV0Tx for ever_stake::EverStake {}
+
+#[test]
+fn test_region() {
+    let regions = &[
+        "NewYork",
+        "Frankfurt",
+        "Amsterdam",
+        "London",
+        "SaltLakeCity",
+        "Tokyo",
+        "LosAngeles",
+        "Pittsburgh",
+        "Singapore",
+        "Unknown",
+    ];
+
+    for region in regions {
+        println!("{}, {:?}", region, Region::from(region));
+    }
+}
