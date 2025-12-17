@@ -6,14 +6,16 @@ impl fmt::Display for EverStake {
 }
 
 use base64::Engine;
+use log::info;
 use rand::seq::IndexedRandom;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use std::sync::Arc;
+use utils::log_time;
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::REGION;
-use crate::platform_clients::{PlatformName, Region, TxSend};
+use crate::platform_clients::{PlatformName, Region};
 
 pub const EVER_STAKE_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("J4cL8c22KNLHwheuWxK1SCYBWASWPGhEi6xvcGyf6o3S"),
@@ -63,21 +65,22 @@ impl EverStake {
     }
 }
 
-
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for EverStake {
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
-        let bytes = base64::prelude::BASE64_STANDARD
-            .decode(tx_base64)
-            .map_err(|e| e.to_string())?;
+        log_time!("ever stake rpc send: ", {
+            let bytes = base64::prelude::BASE64_STANDARD
+                .decode(tx_base64)
+                .map_err(|e| e.to_string())?;
 
-        let tx: solana_sdk::transaction::Transaction =
-            bincode::deserialize(&bytes).map_err(|e| e.to_string())?;
+            let tx: solana_sdk::transaction::Transaction =
+                bincode::deserialize(&bytes).map_err(|e| e.to_string())?;
 
-        match self.json_rpc_client.send_transaction(&tx).await {
-            Ok(_) => Ok(()),
-            Err(e) => Err(format!("Everstake send error: {}", e)),
-        }
+            match self.json_rpc_client.send_transaction(&tx).await {
+                Ok(_) => Ok(()),
+                Err(e) => Err(format!("Everstake send error: {}", e)),
+            }
+        })
     }
 }
 

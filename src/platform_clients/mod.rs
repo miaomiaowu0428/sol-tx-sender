@@ -28,6 +28,7 @@ pub mod nodeone;
 pub mod stellium;
 pub mod temporal;
 pub mod zeroslot;
+pub mod ever_stake_quic;
 
 // 通用交易枚举
 /// 通用交易类型，兼容 Legacy 和 V0 版本
