@@ -1,10 +1,4 @@
 use std::fmt;
-impl fmt::Display for EverStake {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Astralane")
-    }
-}
-
 use base64::Engine;
 use log::info;
 use rand::seq::IndexedRandom;
@@ -97,5 +91,12 @@ impl crate::platform_clients::BuildTx for EverStake {
 
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
+    }
+}
+
+
+impl fmt::Display for EverStake {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "EverStake")
     }
 }
