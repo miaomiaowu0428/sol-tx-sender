@@ -1,6 +1,6 @@
 use crate::platform_clients::Region;
 use reqwest::Client;
-use solana_client::rpc_client::RpcClient;
+use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::pubkey;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;

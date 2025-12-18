@@ -488,6 +488,7 @@ impl BuildV0Tx for flash_block::FlashBlock {}
 impl BuildV0Tx for nextblock::NextBlock {}
 impl BuildV0Tx for stellium::Stellium {}
 impl BuildV0Tx for ever_stake::EverStake {}
+impl BuildV0Tx for ever_stake_quic::EverStakeQuic {}
 
 #[test]
 fn test_region() {
