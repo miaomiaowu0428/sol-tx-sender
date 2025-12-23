@@ -9,6 +9,7 @@ use std::fmt::Display;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
+use utils::log_time;
 
 use crate::constants::HTTP_CLIENT;
 use log::info;
@@ -20,6 +21,7 @@ use solana_sdk::signer::Signer;
 pub mod astralane;
 pub mod blockrazor;
 pub mod ever_stake;
+pub mod ever_stake_quic;
 pub mod flash_block;
 pub mod helius;
 pub mod jito;
@@ -28,7 +30,6 @@ pub mod nodeone;
 pub mod stellium;
 pub mod temporal;
 pub mod zeroslot;
-pub mod ever_stake_quic;
 
 // 通用交易枚举
 /// 通用交易类型，兼容 Legacy 和 V0 版本
@@ -176,71 +177,73 @@ pub trait BuildTx {
     where
         Self: SendTxEncoded + Sync + Send + Sized + Display,
     {
-        let mut instructions = Vec::new();
+        log_time!("build transaction", {
+            let mut instructions = Vec::new();
 
-        // nonce 指令
-        match nonce {
-            HashParam::Blockhash(_) => {}
-            HashParam::NonceAccount {
-                account, authority, ..
-            } => {
-                instructions.push(advance_nonce_account(account, authority));
+            // nonce 指令
+            match nonce {
+                HashParam::Blockhash(_) => {}
+                HashParam::NonceAccount {
+                    account, authority, ..
+                } => {
+                    instructions.push(advance_nonce_account(account, authority));
+                }
             }
-        }
 
-        if let Some(cu_limit) = cu.0 {
-            instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(cu_limit));
-        }
-        if let Some(cu_price) = cu.1 {
-            instructions.push(ComputeBudgetInstruction::set_compute_unit_price(cu_price));
-        }
+            if let Some(cu_limit) = cu.0 {
+                instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(cu_limit));
+            }
+            if let Some(cu_price) = cu.1 {
+                instructions.push(ComputeBudgetInstruction::set_compute_unit_price(cu_price));
+            }
 
-        // tip 转账
-        if let Some(0) = tip {
-            // 如果 tip 为 0，则不添加 tip 转账指令
-        } else {
-            let tip_address = self.get_tip_address();
-            let tip_amt = tip.unwrap_or(self.get_min_tip_amount());
-            info!(
-                "Build Tx with tip: {} at {} tip address: {}",
-                tip_amt as f64 / 1_000_000_000.0,
-                self,
-                tip_address
+            // tip 转账
+            if let Some(0) = tip {
+                // 如果 tip 为 0，则不添加 tip 转账指令
+            } else {
+                let tip_address = self.get_tip_address();
+                let tip_amt = tip.unwrap_or(self.get_min_tip_amount());
+                info!(
+                    "Build Tx with tip: {} at {} tip address: {}",
+                    tip_amt as f64 / 1_000_000_000.0,
+                    self,
+                    tip_address
+                );
+                let tip_ix = transfer(&signer.pubkey(), &tip_address, tip_amt);
+                instructions.push(tip_ix);
+            }
+
+            if let Some(memo_list) = memo {
+                let memo_concat = memo_list.join("-");
+                let memo_ix = solana_sdk::instruction::Instruction {
+                    program_id: *crate::constants::MEMO_PROGRAM,
+                    accounts: vec![],
+                    data: memo_concat.as_bytes().to_vec(),
+                };
+                instructions.push(memo_ix);
+            }
+
+            // 用户指令
+            instructions.extend(ixs.iter().cloned());
+
+            let tx = Transaction::new_signed_with_payer(
+                &instructions,
+                Some(&signer.pubkey()),
+                &[signer],
+                *nonce.hash(),
             );
-            let tip_ix = transfer(&signer.pubkey(), &tip_address, tip_amt);
-            instructions.push(tip_ix);
-        }
 
-        if let Some(memo_list) = memo {
-            let memo_concat = memo_list.join("-");
-            let memo_ix = solana_sdk::instruction::Instruction {
-                program_id: *crate::constants::MEMO_PROGRAM,
-                accounts: vec![],
-                data: memo_concat.as_bytes().to_vec(),
-            };
-            instructions.push(memo_ix);
-        }
-
-        // 用户指令
-        instructions.extend(ixs.iter().cloned());
-
-        let tx = Transaction::new_signed_with_payer(
-            &instructions,
-            Some(&signer.pubkey()),
-            &[signer],
-            *nonce.hash(),
-        );
-
-        TxEnvelope {
-            tx: DetailedTx {
-                tx: SolTx::Legacy(tx),
-                platform: self.platform(),
-                tip: *tip,
-                cu_limit: cu.0,
-                cu_price: cu.1,
-            },
-            sender: self,
-        }
+            TxEnvelope {
+                tx: DetailedTx {
+                    tx: SolTx::Legacy(tx),
+                    platform: self.platform(),
+                    tip: *tip,
+                    cu_limit: cu.0,
+                    cu_price: cu.1,
+                },
+                sender: self,
+            }
+        })
     }
 }
 
@@ -406,72 +409,74 @@ pub trait BuildV0Tx {
     {
         use solana_sdk::message::v0::Message as V0Message;
         use solana_sdk::transaction::VersionedTransaction;
+        log_time!("build transaction", {
+            let hash = *nonce.hash();
+            let payer = signer.pubkey();
+            let mut instructions = Vec::new();
 
-        let hash = *nonce.hash();
-        let payer = signer.pubkey();
-        let mut instructions = Vec::new();
+            // nonce advance 指令
+            if let HashParam::NonceAccount {
+                account, authority, ..
+            } = nonce
+            {
+                let nonce_ix = advance_nonce_account(account, authority);
+                instructions.push(nonce_ix);
+            }
 
-        // nonce advance 指令
-        if let HashParam::NonceAccount {
-            account, authority, ..
-        } = nonce
-        {
-            let nonce_ix = advance_nonce_account(account, authority);
-            instructions.push(nonce_ix);
-        }
+            // cu 指令
+            if let Some(cu_limit) = cu.0 {
+                let limit_instruction = ComputeBudgetInstruction::set_compute_unit_limit(cu_limit);
+                instructions.push(limit_instruction);
+            }
+            if let Some(cu_price) = cu.1 {
+                let price_instruction = ComputeBudgetInstruction::set_compute_unit_price(cu_price);
+                instructions.push(price_instruction);
+            }
 
-        // cu 指令
-        if let Some(cu_limit) = cu.0 {
-            let limit_instruction = ComputeBudgetInstruction::set_compute_unit_limit(cu_limit);
-            instructions.push(limit_instruction);
-        }
-        if let Some(cu_price) = cu.1 {
-            let price_instruction = ComputeBudgetInstruction::set_compute_unit_price(cu_price);
-            instructions.push(price_instruction);
-        }
+            // tip 指令
+            if let Some(0) = tip {
+                // 不添加 tip
+            } else {
+                let tip_address = self.get_tip_address();
+                let tip_amt = tip.unwrap_or(self.get_min_tip_amount());
+                info!(
+                    "Build V0Tx with tip: {}({tip_amt}lamports) at {} tip address: {}",
+                    tip_amt as f64 / 1_000_000_000.0,
+                    self,
+                    tip_address
+                );
+                let tip_ix = transfer(&payer, &tip_address, tip_amt);
+                instructions.push(tip_ix);
+            }
+            if let Some(memo_str) = memo {
+                let memo_concat = memo_str.join("-");
+                let memo_ix = solana_sdk::instruction::Instruction {
+                    program_id: *crate::constants::MEMO_PROGRAM,
+                    accounts: vec![],
+                    data: memo_concat.as_bytes().to_vec(),
+                };
+                instructions.push(memo_ix);
+            }
 
-        // tip 指令
-        if let Some(0) = tip {
-            // 不添加 tip
-        } else {
-            let tip_address = self.get_tip_address();
-            let tip_amt = tip.unwrap_or(self.get_min_tip_amount());
-            info!(
-                "Build V0Tx with tip: {}({tip_amt}lamports) at {} tip address: {}",
-                tip_amt as f64 / 1_000_000_000.0,
-                self,
-                tip_address
-            );
-            let tip_ix = transfer(&payer, &tip_address, tip_amt);
-            instructions.push(tip_ix);
-        }
-        if let Some(memo_str) = memo {
-            let memo_concat = memo_str.join("-");
-            let memo_ix = solana_sdk::instruction::Instruction {
-                program_id: *crate::constants::MEMO_PROGRAM,
-                accounts: vec![],
-                data: memo_concat.as_bytes().to_vec(),
-            };
-            instructions.push(memo_ix);
-        }
+            // 用户指令
+            instructions.extend(ixs.iter().cloned());
 
-        // 用户指令
-        instructions.extend(ixs.iter().cloned());
-
-        let message = V0Message::try_compile(&payer, &instructions, address_lookup_tables, hash)?;
-        let transaction = VersionedTransaction::try_new(
-            solana_sdk::message::VersionedMessage::V0(message),
-            &[signer.as_ref()],
-        )?;
-        Ok(TxEnvelope {
-            tx: DetailedTx {
-                tx: SolTx::V0(transaction),
-                platform: self.platform(),
-                tip: *tip,
-                cu_limit: cu.0,
-                cu_price: cu.1,
-            },
-            sender: self,
+            let message =
+                V0Message::try_compile(&payer, &instructions, address_lookup_tables, hash)?;
+            let transaction = VersionedTransaction::try_new(
+                solana_sdk::message::VersionedMessage::V0(message),
+                &[signer.as_ref()],
+            )?;
+            Ok(TxEnvelope {
+                tx: DetailedTx {
+                    tx: SolTx::V0(transaction),
+                    platform: self.platform(),
+                    tip: *tip,
+                    cu_limit: cu.0,
+                    cu_price: cu.1,
+                },
+                sender: self,
+            })
         })
     }
 }
