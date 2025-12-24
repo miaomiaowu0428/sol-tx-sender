@@ -7,9 +7,9 @@ use rand::seq::IndexedRandom;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::{signature::Keypair, transaction::Transaction};
 use solana_tls_utils::{SkipServerVerification, new_dummy_x509_certificate};
-use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
+use std::{env, fmt};
 use utils::log_time;
 
 use crate::constants::REGION;
@@ -37,8 +37,10 @@ impl EverStakeQuic {
         }
     }
 
-    pub async fn new(keypair: &Keypair) -> Result<Self> {
-        let (cert, key) = new_dummy_x509_certificate(keypair);
+    pub async fn new() -> Result<Self> {
+        let keypair_base58_string = std::env::var("EVER_STAKE_QUIC_KEYPAIR").unwrap_or_default();
+        let keypair = Keypair::from_base58_string(&keypair_base58_string);
+        let (cert, key) = new_dummy_x509_certificate(&keypair);
 
         let mut crypto = rustls::ClientConfig::builder()
             .dangerous()
@@ -146,7 +148,6 @@ impl fmt::Display for EverStakeQuic {
     }
 }
 
-
 // #[tokio::test]
 // async fn test_everstake_quic() -> Result<()> {
 //     rustls::crypto::CryptoProvider::install_default(rustls::crypto::ring::default_provider())
@@ -188,5 +189,3 @@ impl fmt::Display for EverStakeQuic {
 
 //     Ok(())
 // }
-
-
