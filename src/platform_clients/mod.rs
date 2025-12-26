@@ -403,7 +403,7 @@ pub trait BuildV0Tx {
         cu: &(Option<u32>, Option<u64>),
         address_lookup_tables: &[AddressLookupTableAccount],
         memo: Option<Vec<&str>>,
-    ) -> Result<TxEnvelope<'a, Self>, Box<dyn std::error::Error>>
+    ) -> Result<TxEnvelope<'a, Self>, Box<dyn std::error::Error+Send+Sync>>
     where
         Self: Sync + Send + Sized + Display + SendTxEncoded + BuildTx,
     {
