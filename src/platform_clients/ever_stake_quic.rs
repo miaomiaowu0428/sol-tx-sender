@@ -1,4 +1,3 @@
-use anyhow::{Context, Result};
 use base64::Engine;
 use log::{debug, info, warn};
 use quinn::crypto::rustls::QuicClientConfig;
@@ -37,7 +36,7 @@ impl EverStakeQuic {
         }
     }
 
-    pub async fn new() -> Result<Self> {
+    pub async fn new() -> Result<Self, String> {
         let keypair_base58_string = std::env::var("EVER_STAKE_QUIC_KEYPAIR").unwrap_or_default();
         let keypair = Keypair::from_base58_string(&keypair_base58_string);
         let (cert, key) = new_dummy_x509_certificate(&keypair);
@@ -46,12 +45,12 @@ impl EverStakeQuic {
             .dangerous()
             .with_custom_certificate_verifier(SkipServerVerification::new())
             .with_client_auth_cert(vec![cert], key)
-            .context("failed to configure client certificate")?;
+            .map_err(|err| err.to_string())?;
 
         crypto.alpn_protocols = ALPN_SWQOS_TX_PROTOCOL.iter().map(|p| p.to_vec()).collect();
 
         let client_crypto = QuicClientConfig::try_from(crypto)
-            .context("failed to convert rustls config into quinn crypto config")?;
+            .map_err(|err| "failed to convert rustls config into quinn crypto config")?;
         let mut client_config = quinn::ClientConfig::new(Arc::new(client_crypto));
         let mut transport_config = quinn::TransportConfig::default();
 
@@ -64,16 +63,21 @@ impl EverStakeQuic {
 
         client_config.transport_config(Arc::new(transport_config)); // 将配置注入
 
-        let mut endpoint = Endpoint::client("0.0.0.0:0".parse()?)?;
+        let mut endpoint = Endpoint::client("0.0.0.0:0".parse().map_err(|_| "fail to parse ip")?)
+            .map_err(|e| e.to_string())?;
         endpoint.set_default_client_config(client_config.clone());
 
         let connection = endpoint
             .connect_with(
                 client_config,
-                Self::get_endpoint().parse()?,
+                Self::get_endpoint()
+                    .parse()
+                    .map_err(|_| "fail to get endpoint")?,
                 "everstake_swqos",
-            )?
-            .await?;
+            )
+            .map_err(|e| e.to_string())?
+            .await
+            .map_err(|e| e.to_string())?;
 
         Ok(Self {
             _endpoint: endpoint,
@@ -82,29 +86,43 @@ impl EverStakeQuic {
     }
 
     // Send a transaction via quic using a unidirectional stream
-    pub async fn send_transaction(&self, transaction: &Transaction) -> Result<()> {
+    pub async fn send_transaction(&self, transaction: &Transaction) -> Result<(), String> {
         let signature = transaction
             .signatures
             .first()
             .expect("Transaction must have at least one signature");
-        let serialized_tx = bincode::serialize(transaction)?;
+        let serialized_tx = bincode::serialize(transaction).map_err(|e| e.to_string())?;
 
-        let mut send_stream = self.connection.open_uni().await?;
-        send_stream.write_all(&serialized_tx).await?;
-        send_stream.finish()?;
+        let mut send_stream = self
+            .connection
+            .open_uni()
+            .await
+            .map_err(|e| e.to_string())?;
+        send_stream
+            .write_all(&serialized_tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        send_stream.finish().map_err(|e| e.to_string())?;
 
         info!("Transaction {signature:?} has been sent");
         Ok(())
     }
 
     // 核心逻辑：只管发字节，不关心内容
-    pub async fn send_raw_transaction(&self, raw_tx: &[u8]) -> Result<()> {
+    pub async fn send_raw_transaction(&self, raw_tx: &[u8]) -> Result<(), String> {
         // 如果你依然需要提取 signature 用于打印日志，可以只解析前 64 字节（Solana 签名在最前面）
         // 或者直接跳过解析，只打印长度
 
-        let mut send_stream = self.connection.open_uni().await?;
-        send_stream.write_all(raw_tx).await?;
-        send_stream.finish()?;
+        let mut send_stream = self
+            .connection
+            .open_uni()
+            .await
+            .map_err(|e| e.to_string())?;
+        send_stream
+            .write_all(raw_tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        send_stream.finish().map_err(|e| e.to_string())?;
         Ok(())
     }
 }
