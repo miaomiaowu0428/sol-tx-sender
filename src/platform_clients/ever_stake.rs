@@ -1,8 +1,8 @@
-use std::fmt;
 use base64::Engine;
 use log::info;
 use rand::seq::IndexedRandom;
 use solana_client::nonblocking::rpc_client::RpcClient;
+use std::fmt;
 use std::sync::Arc;
 use utils::log_time;
 
@@ -93,7 +93,6 @@ impl crate::platform_clients::BuildTx for EverStake {
         Self::MIN_TIP_AMOUNT_TX
     }
 }
-
 
 impl fmt::Display for EverStake {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

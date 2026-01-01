@@ -4,12 +4,12 @@ impl fmt::Display for Stellium {
         write!(f, "Stellium")
     }
 }
-use utils::log_time;
 use log::info;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
 use serde_json::json;
 use std::sync::Arc;
+use utils::log_time;
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
@@ -82,7 +82,7 @@ impl Stellium {
 #[async_trait::async_trait]
 impl crate::platform_clients::SendTxEncoded for Stellium {
     async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
-        log_time!("stellium send: ",{
+        log_time!("stellium send: ", {
             // URL 格式：https://STELLIUM_ENDPOINT/$APIKEY
             let url = format!("{}/{}", self.endpoint, self.api_key);
 
