@@ -32,13 +32,5 @@ pub static REGION: LazyLock<Region> = LazyLock::new(|| {
     Region::from(region_str)
 });
 
-pub static PAYER: LazyLock<Arc<Keypair>> = LazyLock::new(|| {
-    let payer_path = env::var("PAYER_KEYPAIR_PATH")
-        .expect("PAYER_KEYPAIR_PATH environment variable must be set");
-    let keypair = solana_sdk::signature::read_keypair_file(&payer_path)
-        .unwrap_or_else(|e| panic!("Failed to read keypair from file '{}': {}", payer_path, e));
-    log::info!("Using wallet : {}", keypair.pubkey());
-    Arc::new(keypair)
-});
 pub static MEMO_PROGRAM: LazyLock<solana_sdk::pubkey::Pubkey> =
     LazyLock::new(|| pubkey!("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"));
