@@ -241,6 +241,9 @@ impl crate::platform_clients::BuildTx for FlashBlock {
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
     }
+    fn tip_recvs(&self) -> Vec<Pubkey> {
+        FLASH_BLOCK_TIP_ACCOUNTS.to_vec()
+    }
     // 使用默认实现，无需重写 build_tx
 }
 

@@ -18,7 +18,7 @@ use crate::platform_clients::{PlatformName, Region};
 
 // helius 小费地址
 pub const HELIUS_TIP_ACCOUNTS: &[Pubkey] = &[
-    // pubkey!("4ACfpUFoaSD9bfPdeu6DBt89gB6ENTeHBXCAi87NhDEE"),
+    pubkey!("4ACfpUFoaSD9bfPdeu6DBt89gB6ENTeHBXCAi87NhDEE"),
     pubkey!("D2L6yPZ2FmmmTKPgzaMKdhu6EWZcTpLy1Vhx8uvZe7NZ"),
     pubkey!("9bnz4RShgq1hAnLnZbP8kbgBg1kEmcJBYQq3gQbmnSta"),
     pubkey!("5VY91ws6B2hMmBFRsXkoAAdsPHBJwRfBht4DXox3xkwn"),
@@ -141,6 +141,8 @@ impl crate::platform_clients::BuildTx for Helius {
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
     }
-
+    fn tip_recvs(&self) -> Vec<Pubkey> {
+        HELIUS_TIP_ACCOUNTS.to_vec()
+    }
     // 使用默认实现，无需重写 build_tx
 }

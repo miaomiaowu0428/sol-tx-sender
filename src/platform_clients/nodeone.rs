@@ -17,7 +17,7 @@ use crate::constants::{HTTP_CLIENT, REGION};
 use crate::platform_clients::{PlatformName, Region};
 
 pub const NODEONE_TIP_ACCOUNTS: &[Pubkey] = &[
-    // pubkey!("node1PqAa3BWWzUnTHVbw8NJHC874zn9ngAkXjgWEej"),
+    pubkey!("node1PqAa3BWWzUnTHVbw8NJHC874zn9ngAkXjgWEej"),
     pubkey!("node1UzzTxAAeBTpfZkQPJXBAqixsbdth11ba1NXLBG"),
     pubkey!("node1Qm1bV4fwYnCurP8otJ9s5yrkPq7SPZ5uhj3Tsv"),
     pubkey!("node1PUber6SFmSQgvf2ECmXsHP5o3boRSGhvJyPMX1"),
@@ -118,6 +118,8 @@ impl crate::platform_clients::BuildTx for NodeOne {
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
     }
-
+    fn tip_recvs(&self) -> Vec<Pubkey> {
+        NODEONE_TIP_ACCOUNTS.to_vec()
+    }
     // 使用默认实现，无需重写 build_tx
 }

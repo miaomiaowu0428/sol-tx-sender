@@ -210,7 +210,9 @@ impl crate::platform_clients::BuildTx for NextBlock {
             .or_else(|| NEXTBLOCK_TIP_ACCOUNTS.first())
             .unwrap()
     }
-
+    fn tip_recvs(&self) -> Vec<Pubkey> {
+        NEXTBLOCK_TIP_ACCOUNTS.to_vec()
+    }
     fn platform(&self) -> PlatformName {
         PlatformName::Nextblock
     }

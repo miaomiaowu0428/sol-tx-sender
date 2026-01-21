@@ -166,5 +166,9 @@ impl crate::platform_clients::BuildTx for Stellium {
         Self::MIN_TIP_AMOUNT_TX
     }
 
+    fn tip_recvs(&self) -> Vec<Pubkey> {
+        STELLIUM_TIP_ACCOUNTS.to_vec()
+    }
+
     // 使用默认实现，无需重写 build_tx
 }

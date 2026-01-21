@@ -158,6 +158,9 @@ impl crate::platform_clients::BuildTx for EverStakeQuic {
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
     }
+    fn tip_recvs(&self) -> Vec<Pubkey> {
+        EVER_STAKE_TIP_ACCOUNTS.to_vec()
+    }
 }
 
 impl fmt::Display for EverStakeQuic {

@@ -162,6 +162,7 @@ pub trait BuildTx {
     fn get_tip_address(&self) -> Pubkey;
     fn get_min_tip_amount(&self) -> u64;
     fn platform(&self) -> PlatformName;
+    fn tip_recvs(&self) -> Vec<Pubkey>;
 
     // 默认实现
     /// 默认交易组装实现，支持 tip、cu、nonce 等参数

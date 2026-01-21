@@ -27,7 +27,7 @@ use solana_sdk::{pubkey, pubkey::Pubkey};
 use crate::constants::{HTTP_CLIENT, REGION};
 use crate::platform_clients::{PlatformName, Region, SolTx};
 pub const JITO_TIP_ACCOUNTS: &[Pubkey] = &[
-    // pubkey!("96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5"),
+    pubkey!("96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5"),
     pubkey!("HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe"),
     pubkey!("Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY"),
     pubkey!("ADaUMid9yfUytqMBgopwjb2DTLSokTSzL1zt6iGPaS49"),
@@ -210,11 +210,15 @@ impl crate::platform_clients::BuildTx for Jito {
     fn get_tip_address(&self) -> Pubkey {
         Self::get_tip_address()
     }
+    fn get_min_tip_amount(&self) -> u64 {
+        Self::MIN_TIP_AMOUNT_TX
+    }
     fn platform(&self) -> PlatformName {
         PlatformName::Jito
     }
-    fn get_min_tip_amount(&self) -> u64 {
-        Self::MIN_TIP_AMOUNT_TX
+
+    fn tip_recvs(&self) -> Vec<Pubkey> {
+        JITO_TIP_ACCOUNTS.to_vec()
     }
 
     // 使用默认实现，无需重写 build_tx

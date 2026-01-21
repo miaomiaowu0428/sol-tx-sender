@@ -17,7 +17,7 @@ use crate::constants::{HTTP_CLIENT, REGION};
 use crate::platform_clients::{BuildTx, PlatformName, Region, SendTxEncoded};
 
 const BLOCKRAZOR_TIP_ACCOUNTS: &[Pubkey] = &[
-    // pubkey!("FjmZZrFvhnqqb9ThCuMVnENaM3JGVuGWNyCAxRJcFpg9"),
+    pubkey!("FjmZZrFvhnqqb9ThCuMVnENaM3JGVuGWNyCAxRJcFpg9"),
     pubkey!("6No2i3aawzHsjtThw81iq1EXPJN6rh8eSJCLaYZfKDTG"),
     pubkey!("A9cWowVAiHe9pJfKAj3TJiN9VpbzMUq6E4kEvf5mUT22"),
     pubkey!("Gywj98ophM7GmkDdaWs4isqZnDdFCW7B46TXmKfvyqSm"),
@@ -142,6 +142,9 @@ impl BuildTx for Blockrazor {
     }
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
+    }
+    fn tip_recvs(&self) -> Vec<Pubkey> {
+        BLOCKRAZOR_TIP_ACCOUNTS.to_vec()
     }
 
     // 使用默认实现，无需重写 build_tx

@@ -30,7 +30,7 @@ use crate::constants::{HTTP_CLIENT, REGION};
 use crate::platform_clients::{PlatformName, Region};
 
 pub const ASTRALANE_TIP_ACCOUNTS: &[Pubkey] = &[
-    // pubkey!("astrazznxsGUhWShqgNtAdfrzP2G83DzcWVJDxwV9bF"),
+    pubkey!("astrazznxsGUhWShqgNtAdfrzP2G83DzcWVJDxwV9bF"),
     pubkey!("astra4uejePWneqNaJKuFFA8oonqCE1sqF6b45kDMZm"),
     pubkey!("astra9xWY93QyfG6yM8zwsKsRodscjQ2uU2HKNL5prk"),
     pubkey!("astraRVUuTHjpwEVvNBeQEgwYx9w9CFyfxjYoobCZhL"),
@@ -224,6 +224,9 @@ impl crate::platform_clients::BuildTx for Astralane {
 
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
+    }
+    fn tip_recvs(&self) -> Vec<Pubkey> {
+        ASTRALANE_TIP_ACCOUNTS.to_vec()
     }
 
     // 使用默认实现，无需重写 build_tx

@@ -11,7 +11,7 @@ use crate::constants::{HTTP_CLIENT, REGION};
 use crate::platform_clients::{PlatformName, Region};
 
 pub const ZEROSLOT_TIP_ACCOUNTS: &[Pubkey] = &[
-    // pubkey!("6fQaVhYZA4w3MBSXjJ81Vf6W1EDYeUPXpgVQ6UQyU1Av"),
+    pubkey!("6fQaVhYZA4w3MBSXjJ81Vf6W1EDYeUPXpgVQ6UQyU1Av"),
     pubkey!("4HiwLEP2Bzqj3hM2ENxJuzhcPCdsafwiet3oGkMkuQY4"),
     pubkey!("7toBU3inhmrARGngC7z6SjyP85HgGMmCTEwGNRAcYnEK"),
     pubkey!("8mR3wB1nh4D6J9RUCugxUpc6ya8w38LPxZ3ZjcBhgzws"),
@@ -129,6 +129,9 @@ impl crate::platform_clients::BuildTx for ZeroSlot {
     }
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
+    }
+    fn tip_recvs(&self) -> Vec<Pubkey> {
+        ZEROSLOT_TIP_ACCOUNTS.to_vec()
     }
 
     // 使用默认实现，无需重写 build_tx

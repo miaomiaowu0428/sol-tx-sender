@@ -11,7 +11,7 @@ use crate::constants::{HTTP_CLIENT, REGION};
 use crate::platform_clients::{PlatformName, Region};
 
 pub const TEMPORAL_TIP_ACCOUNTS: &[Pubkey] = &[
-    // pubkey!("TEMPaMeCRFAS9EKF53Jd6KpHxgL47uWLcpFArU1Fanq"),
+    pubkey!("TEMPaMeCRFAS9EKF53Jd6KpHxgL47uWLcpFArU1Fanq"),
     pubkey!("noz3jAjPiHuBPqiSPkkugaJDkJscPuRhYnSpbi8UvC4"),
     pubkey!("noz3str9KXfpKknefHji8L1mPgimezaiUyCHYMDv1GE"),
     pubkey!("noz6uoYCDijhu1V7cutCpwxNiSovEwLdRHPwmgCGDNo"),
@@ -131,6 +131,10 @@ impl crate::platform_clients::BuildTx for Temporal {
 
     fn get_min_tip_amount(&self) -> u64 {
         Self::MIN_TIP_AMOUNT_TX
+    }
+
+    fn tip_recvs(&self) -> Vec<Pubkey> {
+        TEMPORAL_TIP_ACCOUNTS.to_vec()
     }
 
     // 使用默认实现，无需重写 build_tx
