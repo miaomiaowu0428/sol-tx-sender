@@ -51,6 +51,7 @@ pub const JITO_ENDPOINTS: &[&str] = &[
 pub struct Jito {
     pub endpoint: String,
     pub http_client: Arc<Client>,
+    pub uuid: Option<String>,
 }
 
 impl Jito {
@@ -71,7 +72,7 @@ impl Jito {
         }
     }
 
-    pub fn new() -> Self {
+    pub fn new(uuid: &str) -> Self {
         let region = *crate::constants::REGION;
         let endpoint = match region {
             Region::NewYork => JITO_ENDPOINTS[0].to_string(),
@@ -87,6 +88,7 @@ impl Jito {
         Jito {
             endpoint,
             http_client,
+            uuid: Some(uuid.to_string()),
         }
     }
 
@@ -115,7 +117,13 @@ impl crate::platform_clients::SendTxEncoded for Jito {
                 Ok(body) => body,
                 Err(e) => return Err(format!("serde_json error: {}", e)),
             };
-            let url = format!("{}/api/v1/bundles", self.endpoint);
+            let url = {
+                if let Some(uuid) = &self.uuid {
+                    format!("{}/api/v1/bundles?uuid={}", self.endpoint, uuid)
+                } else {
+                    format!("{}/api/v1/bundles", self.endpoint)
+                }
+            };
             let res = self
                 .http_client
                 .post(&url)
