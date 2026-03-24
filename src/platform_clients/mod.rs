@@ -19,6 +19,7 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::{Keypair, Signature};
 use solana_sdk::signer::Signer;
 pub mod astralane;
+pub mod astralane_quic;
 pub mod blockrazor;
 pub mod ever_stake;
 pub mod ever_stake_quic;
@@ -334,6 +335,8 @@ pub enum Region {
     LosAngeles,
     Pittsburgh,
     Singapore,
+    Limburg,
+    Lithuania,
     Unknown,
 }
 
@@ -350,6 +353,8 @@ impl<T: AsRef<str>> From<T> for Region {
             "LosAngeles" => Region::LosAngeles,
             "Pittsburgh" => Region::Pittsburgh,
             "Singapore" => Region::Singapore,
+            "Limburg" => Region::Limburg,
+            "Lithuania" => Region::Lithuania,
             _ => Region::Unknown,
         }
     }
@@ -484,6 +489,7 @@ pub trait BuildV0Tx {
 
 // 各平台 BuildV0Tx 实现
 impl BuildV0Tx for astralane::Astralane {}
+impl BuildV0Tx for astralane_quic::client::AstralaneQuic {}
 impl BuildV0Tx for blockrazor::Blockrazor {}
 impl BuildV0Tx for helius::Helius {}
 impl BuildV0Tx for jito::Jito {}
