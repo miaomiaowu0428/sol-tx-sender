@@ -1,6 +1,7 @@
 use anyhow::Result;
 use astralane_quic_client::AstralaneQuicClient;
 use base64::Engine;
+use log::info;
 use rand::seq::IndexedRandom;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
@@ -53,7 +54,8 @@ impl AstralaneQuic {
             .await
             .map_err(|e| format!("Failed to send QUIC transaction: {}", e))?;
 
-        Ok(tx.signatures[0])
+        let sig = tx.signatures[0];
+        Ok(sig)
     }
 }
 
@@ -75,7 +77,15 @@ impl SendTxEncoded for AstralaneQuic {
         self.client
             .send_transaction(&tx_bytes)
             .await
-            .map_err(|e| format!("Astralane QUIC send error: {}", e))
+            .map_err(|e| format!("Astralane QUIC send error: {}", e))?;
+
+        // Decode again to get signature for logging
+        let tx: Transaction = bincode::deserialize(&tx_bytes)
+            .map_err(|e| format!("Failed to deserialize transaction: {}", e))?;
+        let sig = tx.signatures[0];
+        info!("[AstralaneQuic] Sent transaction signature: {}", sig);
+
+        Ok(())
     }
 }
 
