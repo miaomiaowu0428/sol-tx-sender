@@ -125,7 +125,7 @@ impl crate::platform_clients::SendTxEncoded for Astralane {
                     return Err(format!("send error: {}", e));
                 }
             };
-            // println!("[astralane/send_tx] response: {}", response);
+            info!("[astralane/send_tx] response: {}", response);
             Ok(())
         })
     }
