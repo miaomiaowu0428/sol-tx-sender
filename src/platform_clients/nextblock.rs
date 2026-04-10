@@ -89,6 +89,15 @@ impl NextBlock {
             http_client,
         }
     }
+
+    /// 显式构造：调用方负责提供 token 和 region，不读取任何环境变量。
+    pub fn init_with(token: impl Into<String>, region: Region) -> Self {
+        NextBlock {
+            endpoint: Self::get_endpoint_for_region(region),
+            auth_token: token.into(),
+            http_client: HTTP_CLIENT.clone(),
+        }
+    }
 }
 
 #[async_trait::async_trait]

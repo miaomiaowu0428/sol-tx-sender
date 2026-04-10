@@ -60,19 +60,36 @@ impl Astralane {
     pub const MIN_TIP_AMOUNT_BUNDLE: u64 = 0_000_100_000; // 批量交易最低 tip
     pub const DEFAULT_TPS: u64 = 5;
 
-    pub fn get_endpoint() -> String {
-        match *REGION {
-            Region::Frankfurt => ASTRALANE_ENDPOINTS[0].to_string(),
-            Region::LosAngeles => ASTRALANE_ENDPOINTS[1].to_string(),
-            Region::Tokyo => ASTRALANE_ENDPOINTS[2].to_string(),
-            Region::NewYork => ASTRALANE_ENDPOINTS[3].to_string(),
-            Region::Amsterdam => ASTRALANE_ENDPOINTS[4].to_string(),
-            _ => ASTRALANE_ENDPOINTS[0].to_string(),
+    /// 根据 Region 返回对应的 endpoint URL（纯函数，不依赖全局状态）。
+    pub fn endpoint_for(region: Region) -> &'static str {
+        match region {
+            Region::Frankfurt => ASTRALANE_ENDPOINTS[0],
+            Region::LosAngeles => ASTRALANE_ENDPOINTS[1],
+            Region::Tokyo => ASTRALANE_ENDPOINTS[2],
+            Region::NewYork => ASTRALANE_ENDPOINTS[3],
+            Region::Amsterdam => ASTRALANE_ENDPOINTS[4],
+            _ => ASTRALANE_ENDPOINTS[0],
         }
     }
 
+    /// 兼容旧调用：从 `REGION` 全局 static 读取地区。
+    pub fn get_endpoint() -> String {
+        Self::endpoint_for(*REGION).to_string()
+    }
+
+    /// 显式构造：调用方负责提供 key 和 region，不读取任何环境变量。
+    /// 单例还是每次 new，由业务侧决定。
+    pub fn init_with(key: impl Into<String>, region: Region) -> Self {
+        Astralane {
+            endpoint: Self::endpoint_for(region).to_string(),
+            auth_token: key.into(),
+            http_client: HTTP_CLIENT.clone(),
+        }
+    }
+
+    /// 兼容旧调用：从 `REGION` 全局 static + `ASTRALANE_KEY` 环境变量读取。
     pub fn new() -> Self {
-        let endpoint = Self::get_endpoint().to_string();
+        let endpoint = Self::endpoint_for(*REGION).to_string();
         let auth_token = std::env::var("ASTRALANE_KEY").unwrap_or_default();
         let http_client = HTTP_CLIENT.clone();
         Astralane {

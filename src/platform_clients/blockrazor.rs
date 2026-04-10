@@ -84,6 +84,22 @@ impl Blockrazor {
         }
     }
 
+    pub fn init_with(key: impl Into<String>, region: Region) -> Self {
+        let endpoint = match region {
+            Region::Frankfurt => BLOCKRAZOR_ENDIPOINTS[0].to_string(),
+            Region::NewYork => BLOCKRAZOR_ENDIPOINTS[1].to_string(),
+            Region::Tokyo => BLOCKRAZOR_ENDIPOINTS[2].to_string(),
+            Region::Amsterdam => BLOCKRAZOR_ENDIPOINTS[3].to_string(),
+            _ => BLOCKRAZOR_ENDIPOINTS[0].to_string(),
+        };
+        Blockrazor {
+            endpoint,
+            region,
+            auth_token: key.into(),
+            http_client: HTTP_CLIENT.clone(),
+        }
+    }
+
     pub fn get_tip_address(&self) -> Pubkey {
         *BLOCKRAZOR_TIP_ACCOUNTS
             .choose(&mut rand::rng())

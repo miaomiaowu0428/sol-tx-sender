@@ -85,6 +85,52 @@ impl EverStakeQuic {
         })
     }
 
+    pub async fn init_with(keypair: &Keypair, region: Region) -> Result<Self, String> {
+        let (cert, key) = new_dummy_x509_certificate(keypair);
+
+        let mut crypto = rustls::ClientConfig::builder()
+            .dangerous()
+            .with_custom_certificate_verifier(SkipServerVerification::new())
+            .with_client_auth_cert(vec![cert], key)
+            .map_err(|err| err.to_string())?;
+
+        crypto.alpn_protocols = ALPN_SWQOS_TX_PROTOCOL.iter().map(|p| p.to_vec()).collect();
+
+        let client_crypto = QuicClientConfig::try_from(crypto)
+            .map_err(|_| "failed to convert rustls config into quinn crypto config")?;
+        let mut client_config = quinn::ClientConfig::new(Arc::new(client_crypto));
+        let mut transport_config = quinn::TransportConfig::default();
+        transport_config.keep_alive_interval(Some(Duration::from_secs(10)));
+        client_config.transport_config(Arc::new(transport_config));
+
+        let mut endpoint = Endpoint::client("0.0.0.0:0".parse().map_err(|_| "fail to parse ip")?)
+            .map_err(|e| e.to_string())?;
+        endpoint.set_default_client_config(client_config.clone());
+
+        let quic_endpoint = match region {
+            Region::Frankfurt => "64.130.57.62:11809",
+            Region::NewYork => "64.130.59.154:11809",
+            Region::Amsterdam => "74.118.140.197:11809",
+            Region::Tokyo => "208.91.107.171:11809",
+            _ => "64.130.57.62:11809",
+        };
+
+        let connection = endpoint
+            .connect_with(
+                client_config,
+                quic_endpoint.parse().map_err(|_| "fail to get endpoint")?,
+                "everstake_swqos",
+            )
+            .map_err(|e| e.to_string())?
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok(Self {
+            _endpoint: endpoint,
+            connection,
+        })
+    }
+
     // Send a transaction via quic using a unidirectional stream
     pub async fn send_transaction(&self, transaction: &Transaction) -> Result<(), String> {
         let signature = transaction

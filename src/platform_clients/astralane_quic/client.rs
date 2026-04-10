@@ -12,7 +12,7 @@ use std::fmt;
 use crate::constants::REGION;
 use crate::platform_clients::astralane::ASTRALANE_TIP_ACCOUNTS;
 use crate::platform_clients::astralane_quic::get_quic_endpoint;
-use crate::platform_clients::{BuildTx, PlatformName, SendTxEncoded};
+use crate::platform_clients::{BuildTx, PlatformName, Region, SendTxEncoded};
 
 pub struct AstralaneQuic {
     client: AstralaneQuicClient,
@@ -32,6 +32,21 @@ impl AstralaneQuic {
         let endpoint = Self::get_endpoint();
         let api_key = env::var("ASTRALANE_KEY")
             .map_err(|e| format!("ASTRALANE_KEY env var required: {}", e))?;
+
+        let client = AstralaneQuicClient::connect(&endpoint, &api_key)
+            .await
+            .map_err(|e| format!("Failed to connect to Astralane QUIC: {}", e))?;
+
+        Ok(Self {
+            client,
+            endpoint,
+            api_key,
+        })
+    }
+
+    pub async fn init_with(key: impl Into<String>, region: Region) -> Result<Self, String> {
+        let endpoint = get_quic_endpoint(&region).to_string();
+        let api_key = key.into();
 
         let client = AstralaneQuicClient::connect(&endpoint, &api_key)
             .await

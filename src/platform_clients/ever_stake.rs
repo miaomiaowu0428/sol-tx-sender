@@ -57,6 +57,12 @@ impl EverStake {
             json_rpc_client: Arc::new(RpcClient::new(endpoint)),
         }
     }
+
+    pub fn init_with(rpc_url: impl Into<String>) -> Self {
+        EverStake {
+            json_rpc_client: Arc::new(RpcClient::new(rpc_url.into())),
+        }
+    }
 }
 
 #[async_trait::async_trait]

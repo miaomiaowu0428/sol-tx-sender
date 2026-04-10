@@ -98,6 +98,24 @@ impl FlashBlock {
         }
     }
 
+    /// 显式构造：调用方负责提供 key 和 region，不读取任何环境变量。
+    pub fn init_with(key: impl Into<String>, region: Region) -> Self {
+        let endpoint = match region {
+            Region::NewYork => FLASH_BLOCK_ENDPOINTS[0].to_string(),
+            Region::SaltLakeCity => FLASH_BLOCK_ENDPOINTS[1].to_string(),
+            Region::Amsterdam => FLASH_BLOCK_ENDPOINTS[2].to_string(),
+            Region::Frankfurt => FLASH_BLOCK_ENDPOINTS[3].to_string(),
+            Region::Singapore => FLASH_BLOCK_ENDPOINTS[4].to_string(),
+            Region::London => FLASH_BLOCK_ENDPOINTS[5].to_string(),
+            _ => FLASH_BLOCK_ENDPOINTS[0].to_string(),
+        };
+        FlashBlock {
+            endpoint,
+            http_client: HTTP_CLIENT.clone(),
+            auth_token: key.into(),
+        }
+    }
+
     fn get_tip_address() -> Pubkey {
         *FLASH_BLOCK_TIP_ACCOUNTS
             .choose(&mut rand::rng())

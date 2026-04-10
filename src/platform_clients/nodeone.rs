@@ -69,6 +69,21 @@ impl NodeOne {
             http_client,
         }
     }
+
+    /// 显式构造：调用方负责提供 key 和 region，不读取任何环境变量。
+    pub fn init_with(key: impl Into<String>, region: Region) -> Self {
+        let endpoint = match region {
+            Region::NewYork => NODEONE_ENDPOINT[0].to_string(),
+            Region::Frankfurt => NODEONE_ENDPOINT[1].to_string(),
+            Region::Amsterdam => NODEONE_ENDPOINT[2].to_string(),
+            _ => NODEONE_ENDPOINT[0].to_string(),
+        };
+        NodeOne {
+            endpoint,
+            auth_token: key.into(),
+            http_client: HTTP_CLIENT.clone(),
+        }
+    }
 }
 
 #[async_trait::async_trait]

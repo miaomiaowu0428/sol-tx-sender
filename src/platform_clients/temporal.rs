@@ -74,6 +74,23 @@ impl Temporal {
             http_client,
         }
     }
+
+    /// 显式构造：调用方负责提供 key 和 region，不读取任何环境变量。
+    pub fn init_with(key: impl Into<String>, region: Region) -> Self {
+        let endpoint = match region {
+            Region::Tokyo => TEMPORAL_ENDPOINT[1].to_string(),
+            Region::Singapore => TEMPORAL_ENDPOINT[2].to_string(),
+            Region::NewYork => TEMPORAL_ENDPOINT[3].to_string(),
+            Region::Amsterdam => TEMPORAL_ENDPOINT[4].to_string(),
+            Region::Frankfurt => TEMPORAL_ENDPOINT[5].to_string(),
+            _ => TEMPORAL_ENDPOINT[5].to_string(),
+        };
+        Temporal {
+            endpoint,
+            token: key.into(),
+            http_client: HTTP_CLIENT.clone(),
+        }
+    }
 }
 
 #[async_trait::async_trait]

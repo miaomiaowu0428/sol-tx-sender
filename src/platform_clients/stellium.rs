@@ -77,6 +77,15 @@ impl Stellium {
             http_client,
         }
     }
+
+    /// 显式构造：调用方负责提供 key 和 region，不读取任何环境变量。
+    pub fn init_with(key: impl Into<String>, region: Region) -> Self {
+        Stellium {
+            endpoint: Self::get_endpoint_for_region(region),
+            api_key: key.into(),
+            http_client: HTTP_CLIENT.clone(),
+        }
+    }
 }
 
 #[async_trait::async_trait]
