@@ -41,14 +41,18 @@ impl EverStake {
     pub const MIN_TIP_AMOUNT_TX: u64 = 0_000_500_000; // 单笔交易最低 tip
     pub const DEFAULT_TPS: u64 = 5;
 
-    pub fn get_endpoint() -> String {
-        match *REGION {
-            Region::Frankfurt => EVER_STAKE_ENDPOINTS[1].to_string(),
-            Region::Tokyo => EVER_STAKE_ENDPOINTS[3].to_string(),
-            Region::NewYork => EVER_STAKE_ENDPOINTS[2].to_string(),
-            Region::Amsterdam => EVER_STAKE_ENDPOINTS[4].to_string(),
-            _ => EVER_STAKE_ENDPOINTS[0].to_string(),
+    pub fn endpoint_for(region: Region) -> &'static str {
+        match region {
+            Region::Frankfurt => EVER_STAKE_ENDPOINTS[1],
+            Region::Tokyo => EVER_STAKE_ENDPOINTS[3],
+            Region::NewYork => EVER_STAKE_ENDPOINTS[2],
+            Region::Amsterdam => EVER_STAKE_ENDPOINTS[4],
+            _ => EVER_STAKE_ENDPOINTS[0],
         }
+    }
+
+    pub fn get_endpoint() -> String {
+        Self::endpoint_for(*REGION).to_string()
     }
 
     pub fn new() -> Self {

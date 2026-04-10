@@ -72,23 +72,28 @@ impl Jito {
         }
     }
 
+    pub fn endpoint_for(region: Region) -> &'static str {
+        match region {
+            Region::NewYork => JITO_ENDPOINTS[0],
+            Region::Frankfurt => JITO_ENDPOINTS[1],
+            Region::Amsterdam => JITO_ENDPOINTS[2],
+            Region::London => JITO_ENDPOINTS[3],
+            Region::SaltLakeCity => JITO_ENDPOINTS[4],
+            Region::Tokyo => JITO_ENDPOINTS[5],
+            Region::Singapore => JITO_ENDPOINTS[6],
+            _ => JITO_ENDPOINTS[0],
+        }
+    }
+
     pub fn new(uuid: &str) -> Self {
-        let region = *crate::constants::REGION;
-        let endpoint = match region {
-            Region::NewYork => JITO_ENDPOINTS[0].to_string(),
-            Region::Frankfurt => JITO_ENDPOINTS[1].to_string(),
-            Region::Amsterdam => JITO_ENDPOINTS[2].to_string(),
-            Region::London => JITO_ENDPOINTS[3].to_string(),
-            Region::SaltLakeCity => JITO_ENDPOINTS[4].to_string(),
-            Region::Tokyo => JITO_ENDPOINTS[5].to_string(),
-            Region::Singapore => JITO_ENDPOINTS[6].to_string(),
-            _ => JITO_ENDPOINTS[0].to_string(),
-        };
-        let http_client = HTTP_CLIENT.clone();
+        Self::init_with(uuid, *crate::constants::REGION)
+    }
+
+    pub fn init_with(uuid: impl Into<String>, region: Region) -> Self {
         Jito {
-            endpoint,
-            http_client,
-            uuid: Some(uuid.to_string()),
+            endpoint: Self::endpoint_for(region).to_string(),
+            http_client: HTTP_CLIENT.clone(),
+            uuid: Some(uuid.into()),
         }
     }
 
