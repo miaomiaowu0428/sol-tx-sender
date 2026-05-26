@@ -25,3 +25,11 @@ solana-tls-utils = "3.1.11"
 anyhow = "1.0.102"
 quinn = "0.11.9"
 astralane-quic-client = { git = "https://github.com/miaomiaowu0428/astralane-quic-client.git" }
+# Harmonic gRPC
+tonic  = { version = "0.12", features = ["transport", "tls", "tls-native-roots", "tls-webpki-roots"] }
+prost  = "0.13"
+prost-types = "0.13"
+
+[build-dependencies]
+protoc-bin-vendored = "3"
+tonic-build = "0.12"

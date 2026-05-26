@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package auth;
+
+import "google/protobuf/timestamp.proto";
+
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  SEARCHER = 3;
+}
+
+message GenerateAuthChallengeRequest {
+  Role role = 1;
+  bytes pubkey = 2;
+}
+
+message GenerateAuthChallengeResponse {
+  string challenge = 1;
+}
+
+message GenerateAuthTokensRequest {
+  string challenge = 1;
+  bytes client_pubkey = 2;
+  bytes signed_challenge = 3;
+}
+
+message Token {
+  string value = 1;
+  google.protobuf.Timestamp expires_at_utc = 2;
+}
+
+message GenerateAuthTokensResponse {
+  Token access_token = 1;
+  Token refresh_token = 2;
+}
+
+message RefreshAccessTokenRequest {
+  string refresh_token = 1;
+}
+
+message RefreshAccessTokenResponse {
+  Token access_token = 1;
+}
+
+service AuthService {
+  rpc GenerateAuthChallenge(GenerateAuthChallengeRequest) returns (GenerateAuthChallengeResponse) {}
+  rpc GenerateAuthTokens(GenerateAuthTokensRequest) returns (GenerateAuthTokensResponse) {}
+  rpc RefreshAccessToken(RefreshAccessTokenRequest) returns (RefreshAccessTokenResponse) {}
+}

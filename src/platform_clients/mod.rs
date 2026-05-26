@@ -25,6 +25,8 @@ pub mod ever_stake;
 pub mod ever_stake_quic;
 pub mod flash_block;
 pub mod helius;
+pub mod harmonic;
+pub mod harmonic_proto;
 pub mod jito;
 pub mod nextblock;
 pub mod nodeone;
@@ -81,6 +83,7 @@ pub enum PlatformName {
     Astralane,
     Blockrazor,
     Helius,
+    Harmonic,
     Jito,
     Nodeone,
     Temporal,
@@ -98,6 +101,7 @@ impl std::fmt::Display for PlatformName {
             PlatformName::Astralane => "Astralane",
             PlatformName::Blockrazor => "Blockrazor",
             PlatformName::Helius => "Helius",
+            PlatformName::Harmonic => "HarmonicBlockEngine",
             PlatformName::Jito => "Jito",
             PlatformName::Nodeone => "Nodeone",
             PlatformName::Temporal => "Temporal",
@@ -165,6 +169,13 @@ pub trait BuildTx {
     fn platform(&self) -> PlatformName;
     fn tip_recvs(&self) -> Vec<Pubkey>;
 
+    /// 是否需要在交易中加入 SOL tip 转账指令。
+    ///
+    /// 默认 `true`。返回 `false` 的平台（如 Harmonic）不会写入 tip，
+    /// 调用方传入任何 tip 值均被静默忽略。
+    fn uses_tip_transfer(&self) -> bool {
+        true
+    }
     // 默认实现
     /// 默认交易组装实现，支持 tip、cu、nonce 等参数
     fn build_tx<'a>(
@@ -199,21 +210,29 @@ pub trait BuildTx {
                 instructions.push(ComputeBudgetInstruction::set_compute_unit_price(cu_price));
             }
 
-            // tip 转账
-            if let Some(0) = tip {
-                // 如果 tip 为 0，则不添加 tip 转账指令
-            } else {
-                let tip_address = self.get_tip_address();
-                let tip_amt = tip.unwrap_or(self.get_min_tip_amount());
-                info!(
-                    "Build Tx with tip: {} at {} tip address: {}",
-                    tip_amt as f64 / 1_000_000_000.0,
-                    self,
-                    tip_address
-                );
-                let tip_ix = transfer(&signer.pubkey(), &tip_address, tip_amt);
-                instructions.push(tip_ix);
+            // tip 转账指令：三重保护
+            // 1. uses_tip_transfer()=false 的平台（如 Harmonic）直接跳过
+            // 2. tip=Some(0) 跳过
+            // 3. tip_amt=0（如平台 min=0）跳过
+            if self.uses_tip_transfer() {
+                if let Some(0) = tip {
+                    // tip = Some(0) → 不添加 tip 指令
+                } else {
+                    let tip_address = self.get_tip_address();
+                    let tip_amt = tip.unwrap_or(self.get_min_tip_amount());
+                    if tip_amt > 0 {
+                        info!(
+                            "Build Tx with tip: {}({tip_amt}lamports) at {} tip address: {}",
+                            tip_amt as f64 / 1_000_000_000.0,
+                            self,
+                            tip_address
+                        );
+                        let tip_ix = transfer(&signer.pubkey(), &tip_address, tip_amt);
+                        instructions.push(tip_ix);
+                    }
+                }
             }
+            // uses_tip_transfer()=false 时（如 Harmonic）直接跳过，不写 tip 指令
 
             if let Some(memo_list) = memo {
                 let memo_concat = memo_list.join("-");
@@ -439,21 +458,25 @@ pub trait BuildV0Tx {
                 instructions.push(price_instruction);
             }
 
-            // tip 指令
-            if let Some(0) = tip {
-                // 不添加 tip
-            } else {
-                let tip_address = self.get_tip_address();
-                let tip_amt = tip.unwrap_or(self.get_min_tip_amount());
-                info!(
-                    "Build V0Tx with tip: {}({tip_amt}lamports) at {} tip address: {}",
-                    tip_amt as f64 / 1_000_000_000.0,
-                    self,
-                    tip_address
-                );
-                let tip_ix = transfer(&payer, &tip_address, tip_amt);
-                instructions.push(tip_ix);
+            if self.uses_tip_transfer() {
+                if let Some(0) = tip {
+                    // tip = Some(0) → 不添加 tip 指令
+                } else {
+                    let tip_address = self.get_tip_address();
+                    let tip_amt = tip.unwrap_or(self.get_min_tip_amount());
+                    if tip_amt > 0 {
+                        info!(
+                            "Build V0Tx with tip: {}({tip_amt}lamports) at {} tip address: {}",
+                            tip_amt as f64 / 1_000_000_000.0,
+                            self,
+                            tip_address
+                        );
+                        let tip_ix = transfer(&payer, &tip_address, tip_amt);
+                        instructions.push(tip_ix);
+                    }
+                }
             }
+            // uses_tip_transfer() = false 时（如 Harmonic）直接跳过，不写 tip 指令
             if let Some(memo_str) = memo {
                 let memo_concat = memo_str.join("-");
                 let memo_ix = solana_sdk::instruction::Instruction {
@@ -492,6 +515,7 @@ impl BuildV0Tx for astralane::Astralane {}
 impl BuildV0Tx for astralane_quic::client::AstralaneQuic {}
 impl BuildV0Tx for blockrazor::Blockrazor {}
 impl BuildV0Tx for helius::Helius {}
+impl BuildV0Tx for harmonic::HarmonicBlockEngine {}
 impl BuildV0Tx for jito::Jito {}
 impl BuildV0Tx for nodeone::NodeOne {}
 impl BuildV0Tx for temporal::Temporal {}
