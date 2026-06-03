@@ -16,12 +16,12 @@
 
 use crate::platform_clients::harmonic_proto::{
     auth::{
-        auth_service_client::AuthServiceClient, GenerateAuthChallengeRequest,
-        GenerateAuthTokensRequest, Role,
+        GenerateAuthChallengeRequest, GenerateAuthTokensRequest, Role,
+        auth_service_client::AuthServiceClient,
     },
     bundle::Bundle,
     packet::{Meta, Packet, PacketFlags},
-    searcher::{searcher_service_client::SearcherServiceClient, SendBundleRequest},
+    searcher::{SendBundleRequest, searcher_service_client::SearcherServiceClient},
     shared::Header,
 };
 use crate::platform_clients::{PlatformName, Region};
@@ -30,24 +30,24 @@ use anyhow::{Context, anyhow};
 use base64::Engine;
 use log::{error, info};
 use prost_types::Timestamp;
-use solana_sdk::{pubkey, pubkey::Pubkey, signature::Keypair, signer::Signer};
 use solana_sdk::transaction::VersionedTransaction;
+use solana_sdk::{pubkey, pubkey::Pubkey, signature::Keypair, signer::Signer};
 use std::fmt;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tonic::Request;
 use tonic::metadata::MetadataValue;
 use tonic::transport::{Channel, ClientTlsConfig};
-use tonic::Request;
 
 // ── 端点 ─────────────────────────────────────────────────────────────────────
 
 pub const HARMONIC_BE_ENDPOINTS: &[&str] = &[
-    "https://fra.be.harmonic.gg",  // Frankfurt
-    "https://lon.be.harmonic.gg",  // London
-    "https://ams.be.harmonic.gg",  // Amsterdam
-    "https://ewr.be.harmonic.gg",  // Newark
-    "https://tyo.be.harmonic.gg",  // Tokyo
-    "https://sgp.be.harmonic.gg",  // Singapore
+    "https://fra.be.harmonic.gg", // Frankfurt
+    "https://lon.be.harmonic.gg", // London
+    "https://ams.be.harmonic.gg", // Amsterdam
+    "https://ewr.be.harmonic.gg", // Newark
+    "https://tyo.be.harmonic.gg", // Tokyo
+    "https://sgp.be.harmonic.gg", // Singapore
 ];
 
 // ── HarmonicBlockEngine ───────────────────────────────────────────────────────
@@ -79,14 +79,20 @@ impl HarmonicBlockEngine {
     /// 默认使用全部 endpoint（官方推荐）。
     pub fn init_with(searcher: Arc<Keypair>) -> Self {
         Self {
-            endpoints: HARMONIC_BE_ENDPOINTS.iter().map(|s| s.to_string()).collect(),
+            endpoints: HARMONIC_BE_ENDPOINTS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             searcher,
         }
     }
 
     /// 指定部分 endpoint（用于测试或按需选择区域）。
     pub fn init_with_endpoints(searcher: Arc<Keypair>, endpoints: Vec<String>) -> Self {
-        Self { endpoints, searcher }
+        Self {
+            endpoints,
+            searcher,
+        }
     }
 
     /// 将序列化后的交易字节封装成 Harmonic bundle 并发往所有 endpoint。
@@ -101,8 +107,7 @@ impl HarmonicBlockEngine {
             let searcher = Arc::clone(&self.searcher);
 
             handles.push(tokio::spawn(async move {
-                let result =
-                    send_to_endpoint(&endpoint, &searcher, tx_bytes, packet_size).await;
+                let result = send_to_endpoint(&endpoint, &searcher, tx_bytes, packet_size).await;
                 (endpoint, result)
             }));
         }
@@ -186,7 +191,9 @@ async fn send_to_endpoint(
 
     let mut req = Request::new(SendBundleRequest {
         bundle: Some(Bundle {
-            header: Some(Header { ts: Some(now_ts()?) }),
+            header: Some(Header {
+                ts: Some(now_ts()?),
+            }),
             packets: vec![Packet {
                 data: tx_bytes,
                 meta: Some(Meta {

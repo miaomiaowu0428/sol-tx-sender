@@ -17,8 +17,9 @@ use crate::platform_clients::{BuildTx, BuildV0Tx, PlatformName, Region, SendTxEn
 
 const ALPN_SWQOS_TX_PROTOCOL: &[&[u8]] = &[b"solana-tpu"];
 
+#[derive(Clone)]
 pub struct EverStakeQuic {
-    _endpoint: Endpoint,
+    _endpoint: Arc<Endpoint>,
     connection: Connection,
 }
 
@@ -80,7 +81,7 @@ impl EverStakeQuic {
             .map_err(|e| e.to_string())?;
 
         Ok(Self {
-            _endpoint: endpoint,
+            _endpoint: Arc::new(endpoint),
             connection,
         })
     }
@@ -126,7 +127,7 @@ impl EverStakeQuic {
             .map_err(|e| e.to_string())?;
 
         Ok(Self {
-            _endpoint: endpoint,
+            _endpoint: Arc::new(endpoint),
             connection,
         })
     }

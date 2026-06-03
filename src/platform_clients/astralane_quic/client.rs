@@ -8,14 +8,16 @@ use solana_sdk::signature::Signature;
 use solana_sdk::transaction::Transaction;
 use std::env;
 use std::fmt;
+use std::sync::Arc;
 
 use crate::constants::REGION;
 use crate::platform_clients::astralane::ASTRALANE_TIP_ACCOUNTS;
 use crate::platform_clients::astralane_quic::get_quic_endpoint;
 use crate::platform_clients::{BuildTx, PlatformName, Region, SendTxEncoded};
 
+#[derive(Clone)]
 pub struct AstralaneQuic {
-    client: AstralaneQuicClient,
+    client: Arc<AstralaneQuicClient>,
     endpoint: String,
     api_key: String,
 }
@@ -38,7 +40,7 @@ impl AstralaneQuic {
             .map_err(|e| format!("Failed to connect to Astralane QUIC: {}", e))?;
 
         Ok(Self {
-            client,
+            client: Arc::new(client),
             endpoint,
             api_key,
         })
@@ -53,7 +55,7 @@ impl AstralaneQuic {
             .map_err(|e| format!("Failed to connect to Astralane QUIC: {}", e))?;
 
         Ok(Self {
-            client,
+            client: Arc::new(client),
             endpoint,
             api_key,
         })
