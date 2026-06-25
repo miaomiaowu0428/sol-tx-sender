@@ -97,9 +97,13 @@ impl SendTxEncoded for AstralaneQuic {
             .map_err(|e| format!("Astralane QUIC send error: {}", e))?;
 
         // Try parsing as VersionedTransaction first (V0), fallback to Transaction (legacy)
-        let sig = if let Ok(v0tx) = bincode::deserialize::<solana_sdk::transaction::VersionedTransaction>(&tx_bytes) {
+        let sig = if let Ok(v0tx) =
+            bincode::deserialize::<solana_sdk::transaction::VersionedTransaction>(&tx_bytes)
+        {
             v0tx.signatures[0]
-        } else if let Ok(tx) = bincode::deserialize::<solana_sdk::transaction::Transaction>(&tx_bytes) {
+        } else if let Ok(tx) =
+            bincode::deserialize::<solana_sdk::transaction::Transaction>(&tx_bytes)
+        {
             tx.signatures[0]
         } else {
             return Err("Failed to deserialize transaction for signature".to_string());

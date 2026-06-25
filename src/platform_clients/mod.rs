@@ -496,6 +496,8 @@ pub trait BuildV0Tx {
                 solana_sdk::message::VersionedMessage::V0(message),
                 &[signer.as_ref()],
             )?;
+            let sig = transaction.signatures[0];
+            info!("  sig: {}", sig);
             Ok(TxEnvelope {
                 tx: DetailedTx {
                     tx: SolTx::V0(transaction),
