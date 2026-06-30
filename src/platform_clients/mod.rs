@@ -510,6 +510,75 @@ pub trait BuildV0Tx {
             })
         })
     }
+
+    /// 多签版本：`signers` 中第一个是 fee payer，其余为额外签名者。
+    fn build_multisig_v0_tx<'a>(
+        &'a self,
+        ixs: &[Instruction],
+        signers: &[&Keypair],
+        tip: &Option<u64>,
+        nonce: &HashParam,
+        cu: &(Option<u32>, Option<u64>),
+        address_lookup_tables: &[AddressLookupTableAccount],
+        memo: Option<Vec<&str>>,
+    ) -> Result<TxEnvelope<'a, Self>, Box<dyn std::error::Error + Send + Sync>>
+    where
+        Self: Sync + Send + Sized + Display + SendTxEncoded + BuildTx,
+    {
+        use solana_sdk::message::v0::Message as V0Message;
+        use solana_sdk::transaction::VersionedTransaction;
+        log_time!("build multisig transaction", {
+            let hash = *nonce.hash();
+            let payer = signers[0].pubkey();
+            let mut instructions = Vec::new();
+
+            if let HashParam::NonceAccount { account, authority, .. } = nonce {
+                instructions.push(advance_nonce_account(account, authority));
+            }
+            if let Some(cu_limit) = cu.0 {
+                instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(cu_limit));
+            }
+            if let Some(cu_price) = cu.1 {
+                instructions.push(ComputeBudgetInstruction::set_compute_unit_price(cu_price));
+            }
+            if self.uses_tip_transfer() {
+                if tip != &Some(0) {
+                    let tip_address = self.get_tip_address();
+                    let tip_amt = tip.unwrap_or(self.get_min_tip_amount());
+                    if tip_amt > 0 {
+                        instructions.push(transfer(&payer, &tip_address, tip_amt));
+                    }
+                }
+            }
+            if let Some(memo_str) = memo {
+                let memo_concat = memo_str.join("-");
+                instructions.push(solana_sdk::instruction::Instruction {
+                    program_id: *crate::constants::MEMO_PROGRAM,
+                    accounts: vec![],
+                    data: memo_concat.as_bytes().to_vec(),
+                });
+            }
+            instructions.extend(ixs.iter().cloned());
+
+            let message = V0Message::try_compile(&payer, &instructions, address_lookup_tables, hash)?;
+            let transaction = VersionedTransaction::try_new(
+                solana_sdk::message::VersionedMessage::V0(message),
+                signers,
+            )?;
+            let sig = transaction.signatures[0];
+            info!("  sig: {}", sig);
+            Ok(TxEnvelope {
+                tx: DetailedTx {
+                    tx: SolTx::V0(transaction),
+                    platform: self.platform(),
+                    tip: *tip,
+                    cu_limit: cu.0,
+                    cu_price: cu.1,
+                },
+                sender: self,
+            })
+        })
+    }
 }
 
 // 各平台 BuildV0Tx 实现
