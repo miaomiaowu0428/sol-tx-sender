@@ -605,6 +605,8 @@ fn test_region() {
 #[async_trait::async_trait]
 pub trait BundleSender: Send + Sync {
     async fn send_bundle(&self, txs: &[SolTx]) -> Result<Vec<Signature>, String>;
+    /// 该平台的 tip 接收地址
+    fn tip_address(&self) -> Pubkey;
 }
 
 /// Bundle append 失败时携带 builder，不丢已添加的交易
@@ -619,30 +621,17 @@ impl<T> BundleError<T> {
     }
 }
 
-/// Bundle builder 配置
-pub struct BundleConfig {
-    /// 最大交易数
-    pub max_txs: usize,
-    /// 默认 tip 接收地址
-    pub tip_address: Pubkey,
-    /// 最小 tip 金额（lamports）
-    pub min_tip: u64,
-}
-
 /// 平台无关的 bundle 构建器
 pub struct BundleBuilder {
     txs: Vec<SolTx>,
-    config: BundleConfig,
     sender: Box<dyn BundleSender>,
 }
 
+const MAX_TXS: usize = 5;
+
 impl BundleBuilder {
-    pub fn new(config: BundleConfig, sender: Box<dyn BundleSender>) -> Self {
-        Self {
-            txs: Vec::new(),
-            config,
-            sender,
-        }
+    pub fn new(sender: Box<dyn BundleSender>) -> Self {
+        Self { txs: Vec::new(), sender }
     }
 
     pub fn len(&self) -> usize {
@@ -652,7 +641,7 @@ impl BundleBuilder {
         self.txs.is_empty()
     }
     pub fn is_full(&self) -> bool {
-        self.txs.len() >= self.config.max_txs
+        self.txs.len() >= MAX_TXS
     }
 
     /// 添加一笔交易。参数与 `build_v0_tx` 完全一致。
@@ -672,7 +661,7 @@ impl BundleBuilder {
 
         if self.is_full() {
             return Err(BundleError {
-                msg: format!("bundle full: {} >= {}", self.txs.len(), self.config.max_txs),
+                msg: format!("bundle full: {} >= {}", self.txs.len(), MAX_TXS),
                 builder: self,
             });
         }
@@ -694,11 +683,10 @@ impl BundleBuilder {
             instructions.push(ComputeBudgetInstruction::set_compute_unit_price(cu_price));
         }
 
-        // tip: Some(0) 跳过，None 用 min_tip
-        if tip != &Some(0) {
-            let tip_amt = tip.unwrap_or(self.config.min_tip);
-            if tip_amt > 0 {
-                instructions.push(transfer(&payer, &self.config.tip_address, tip_amt));
+        // tip：由调用方显式传入
+        if let Some(tip_amt) = tip {
+            if *tip_amt > 0 {
+                instructions.push(transfer(&payer, &self.sender.tip_address(), *tip_amt));
             }
         }
 

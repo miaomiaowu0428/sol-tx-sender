@@ -107,6 +107,10 @@ impl Astralane {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::BundleSender for Astralane {
+    fn tip_address(&self) -> Pubkey {
+        self.get_tip_address()
+    }
+
     async fn send_bundle(&self, txs: &[crate::platform_clients::SolTx]) -> Result<Vec<Signature>, String> {
         use crate::platform_clients::SolTx;
 
