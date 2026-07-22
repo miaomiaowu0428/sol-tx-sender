@@ -139,16 +139,10 @@ impl crate::platform_clients::SendTxEncoded for NextBlock {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendBundle for NextBlock {
-    async fn send_bundle(
-        &self,
-        txs: &[crate::platform_clients::SolTx],
-    ) -> Result<Vec<solana_sdk::signature::Signature>, String> {
+    async fn send_bundle(&self, txs: &[crate::platform_clients::SolTx]) -> Result<Vec<solana_sdk::signature::Signature>, String> {
         // NextBlock 要求 2-4 笔交易
         if txs.len() < 2 || txs.len() > 4 {
-            return Err(format!(
-                "NextBlock bundle requires 2-4 transactions, got {}",
-                txs.len()
-            ));
+            return Err(format!("NextBlock bundle requires 2-4 transactions, got {}", txs.len()));
         }
 
         let url = format!("{}/api/v2/submit-batch", self.endpoint);
@@ -193,8 +187,8 @@ impl crate::platform_clients::SendBundle for NextBlock {
         info!("NextBlock bundle response: {}", response);
 
         // 解析响应
-        let parsed_response: serde_json::Value = serde_json::from_str(&response)
-            .map_err(|e| format!("Failed to parse response: {}", e))?;
+        let parsed_response: serde_json::Value =
+            serde_json::from_str(&response).map_err(|e| format!("Failed to parse response: {}", e))?;
 
         if let Some(signature_str) = parsed_response.get("signature").and_then(|s| s.as_str()) {
             // NextBlock 只返回一个签名，我们需要为每个交易返回相同的签名

@@ -130,11 +130,7 @@ pub struct DetailedTx {
 #[derive(Debug, Clone, Copy)]
 pub enum HashParam {
     Blockhash(Hash),
-    NonceAccount {
-        account: Pubkey,
-        authority: Pubkey,
-        hash: Hash,
-    },
+    NonceAccount { account: Pubkey, authority: Pubkey, hash: Hash },
 }
 impl HashParam {
     /// 获取当前哈希值
@@ -196,9 +192,7 @@ pub trait BuildTx {
             // nonce 指令
             match nonce {
                 HashParam::Blockhash(_) => {}
-                HashParam::NonceAccount {
-                    account, authority, ..
-                } => {
+                HashParam::NonceAccount { account, authority, .. } => {
                     instructions.push(advance_nonce_account(account, authority));
                 }
             }
@@ -247,12 +241,7 @@ pub trait BuildTx {
             // 用户指令
             instructions.extend(ixs.iter().cloned());
 
-            let tx = Transaction::new_signed_with_payer(
-                &instructions,
-                Some(&signer.pubkey()),
-                &[signer],
-                *nonce.hash(),
-            );
+            let tx = Transaction::new_signed_with_payer(&instructions, Some(&signer.pubkey()), &[signer], *nonce.hash());
 
             TxEnvelope {
                 tx: DetailedTx {
@@ -440,10 +429,7 @@ pub trait BuildV0Tx {
             let mut instructions = Vec::new();
 
             // nonce advance 指令
-            if let HashParam::NonceAccount {
-                account, authority, ..
-            } = nonce
-            {
+            if let HashParam::NonceAccount { account, authority, .. } = nonce {
                 let nonce_ix = advance_nonce_account(account, authority);
                 instructions.push(nonce_ix);
             }
@@ -490,12 +476,9 @@ pub trait BuildV0Tx {
             // 用户指令
             instructions.extend(ixs.iter().cloned());
 
-            let message =
-                V0Message::try_compile(&payer, &instructions, address_lookup_tables, hash)?;
-            let transaction = VersionedTransaction::try_new(
-                solana_sdk::message::VersionedMessage::V0(message),
-                &[signer.as_ref()],
-            )?;
+            let message = V0Message::try_compile(&payer, &instructions, address_lookup_tables, hash)?;
+            let transaction =
+                VersionedTransaction::try_new(solana_sdk::message::VersionedMessage::V0(message), &[signer.as_ref()])?;
             let sig = transaction.signatures[0];
             info!("  sig: {}", sig);
             Ok(TxEnvelope {
@@ -561,10 +544,7 @@ pub trait BuildV0Tx {
             instructions.extend(ixs.iter().cloned());
 
             let message = V0Message::try_compile(&payer, &instructions, address_lookup_tables, hash)?;
-            let transaction = VersionedTransaction::try_new(
-                solana_sdk::message::VersionedMessage::V0(message),
-                signers,
-            )?;
+            let transaction = VersionedTransaction::try_new(solana_sdk::message::VersionedMessage::V0(message), signers)?;
             let sig = transaction.signatures[0];
             info!("  sig: {}", sig);
             Ok(TxEnvelope {
@@ -614,5 +594,152 @@ fn test_region() {
 
     for region in regions {
         println!("{}, {:?}", region, Region::from(region));
+    }
+}
+
+// ============================================================
+// Bundle Builder — 平台无关的批量交易构建器
+// ============================================================
+
+/// Bundle 发送接口（各平台实现，注入到 BundleBuilder）
+#[async_trait::async_trait]
+pub trait BundleSender: Send + Sync {
+    async fn send_bundle(&self, txs: &[SolTx]) -> Result<Vec<Signature>, String>;
+}
+
+/// Bundle append 失败时携带 builder，不丢已添加的交易
+pub struct BundleError<T> {
+    pub msg: String,
+    pub builder: T,
+}
+
+impl<T> BundleError<T> {
+    pub fn into_builder(self) -> T {
+        self.builder
+    }
+}
+
+/// Bundle builder 配置
+pub struct BundleConfig {
+    /// 最大交易数
+    pub max_txs: usize,
+    /// 默认 tip 接收地址
+    pub tip_address: Pubkey,
+    /// 最小 tip 金额（lamports）
+    pub min_tip: u64,
+}
+
+/// 平台无关的 bundle 构建器
+pub struct BundleBuilder {
+    txs: Vec<SolTx>,
+    config: BundleConfig,
+    sender: Box<dyn BundleSender>,
+}
+
+impl BundleBuilder {
+    pub fn new(config: BundleConfig, sender: Box<dyn BundleSender>) -> Self {
+        Self {
+            txs: Vec::new(),
+            config,
+            sender,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.txs.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.txs.is_empty()
+    }
+    pub fn is_full(&self) -> bool {
+        self.txs.len() >= self.config.max_txs
+    }
+
+    /// 添加一笔交易。参数与 `build_v0_tx` 完全一致。
+    /// 链式调用：`builder.append(...)?.append(...)?.send().await`
+    pub fn append(
+        mut self,
+        ixs: &[Instruction],
+        signers: &[&Keypair],
+        tip: &Option<u64>,
+        nonce: &HashParam,
+        cu: &(Option<u32>, Option<u64>),
+        address_lookup_tables: &[AddressLookupTableAccount],
+        memo: Option<Vec<&str>>,
+    ) -> Result<Self, BundleError<Self>> {
+        use solana_sdk::message::v0::Message as V0Message;
+        use solana_sdk::transaction::VersionedTransaction;
+
+        if self.is_full() {
+            return Err(BundleError {
+                msg: format!("bundle full: {} >= {}", self.txs.len(), self.config.max_txs),
+                builder: self,
+            });
+        }
+
+        let hash = *nonce.hash();
+        let payer = signers.first().map(|k| k.pubkey()).unwrap_or_default();
+        let mut instructions = Vec::new();
+
+        // nonce advance
+        if let HashParam::NonceAccount { account, authority, .. } = nonce {
+            instructions.push(advance_nonce_account(account, authority));
+        }
+
+        // cu
+        if let Some(cu_limit) = cu.0 {
+            instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(cu_limit));
+        }
+        if let Some(cu_price) = cu.1 {
+            instructions.push(ComputeBudgetInstruction::set_compute_unit_price(cu_price));
+        }
+
+        // tip: Some(0) 跳过，None 用 min_tip
+        if tip != &Some(0) {
+            let tip_amt = tip.unwrap_or(self.config.min_tip);
+            if tip_amt > 0 {
+                instructions.push(transfer(&payer, &self.config.tip_address, tip_amt));
+            }
+        }
+
+        // memo
+        if let Some(memo_str) = memo {
+            instructions.push(solana_sdk::instruction::Instruction {
+                program_id: *crate::constants::MEMO_PROGRAM,
+                accounts: vec![],
+                data: memo_str.join("-").into_bytes(),
+            });
+        }
+
+        instructions.extend(ixs.iter().cloned());
+
+        let message = match V0Message::try_compile(&payer, &instructions, address_lookup_tables, hash) {
+            Ok(m) => m,
+            Err(e) => {
+                return Err(BundleError {
+                    msg: format!("compile: {e}"),
+                    builder: self,
+                });
+            }
+        };
+        let transaction = match VersionedTransaction::try_new(solana_sdk::message::VersionedMessage::V0(message), signers) {
+            Ok(t) => t,
+            Err(e) => {
+                return Err(BundleError {
+                    msg: format!("sign: {e}"),
+                    builder: self,
+                });
+            }
+        };
+        self.txs.push(SolTx::V0(transaction));
+        Ok(self)
+    }
+
+    /// 发送 bundle
+    pub async fn send(self) -> Result<Vec<Signature>, String> {
+        if self.txs.is_empty() {
+            return Err("bundle is empty".into());
+        }
+        self.sender.send_bundle(&self.txs).await
     }
 }

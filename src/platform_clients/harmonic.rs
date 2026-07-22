@@ -15,10 +15,7 @@
 //!    官方建议同时发往所有 endpoint 以获得最低延迟。
 
 use crate::platform_clients::harmonic_proto::{
-    auth::{
-        GenerateAuthChallengeRequest, GenerateAuthTokensRequest, Role,
-        auth_service_client::AuthServiceClient,
-    },
+    auth::{GenerateAuthChallengeRequest, GenerateAuthTokensRequest, Role, auth_service_client::AuthServiceClient},
     bundle::Bundle,
     packet::{Meta, Packet, PacketFlags},
     searcher::{SendBundleRequest, searcher_service_client::SearcherServiceClient},
@@ -79,20 +76,14 @@ impl HarmonicBlockEngine {
     /// 默认使用全部 endpoint（官方推荐）。
     pub fn init_with(searcher: Arc<Keypair>) -> Self {
         Self {
-            endpoints: HARMONIC_BE_ENDPOINTS
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
+            endpoints: HARMONIC_BE_ENDPOINTS.iter().map(|s| s.to_string()).collect(),
             searcher,
         }
     }
 
     /// 指定部分 endpoint（用于测试或按需选择区域）。
     pub fn init_with_endpoints(searcher: Arc<Keypair>, endpoints: Vec<String>) -> Self {
-        Self {
-            endpoints,
-            searcher,
-        }
+        Self { endpoints, searcher }
     }
 
     /// 将序列化后的交易字节封装成 Harmonic bundle 并发往所有 endpoint。
@@ -147,8 +138,7 @@ impl crate::platform_clients::SendTxEncoded for HarmonicBlockEngine {
             .map_err(|e| format!("base64 decode failed: {}", e))?;
 
         // 验证反序列化（确保 tx_bytes 是合法的 VersionedTransaction）
-        let _ = bincode::deserialize::<VersionedTransaction>(&tx_bytes)
-            .map_err(|e| format!("deserialize tx failed: {}", e))?;
+        let _ = bincode::deserialize::<VersionedTransaction>(&tx_bytes).map_err(|e| format!("deserialize tx failed: {}", e))?;
 
         self.send_bundle_bytes(tx_bytes).await
     }
@@ -179,21 +169,14 @@ impl crate::platform_clients::BuildTx for HarmonicBlockEngine {
 // ── 内部 gRPC 函数 ────────────────────────────────────────────────────────────
 
 /// 向单个 endpoint 认证并发送 bundle。
-async fn send_to_endpoint(
-    endpoint: &str,
-    searcher: &Keypair,
-    tx_bytes: Vec<u8>,
-    packet_size: u64,
-) -> anyhow::Result<String> {
+async fn send_to_endpoint(endpoint: &str, searcher: &Keypair, tx_bytes: Vec<u8>, packet_size: u64) -> anyhow::Result<String> {
     let token = authenticate(endpoint, searcher).await?;
     let channel = connect(endpoint).await?;
     let mut client = SearcherServiceClient::new(channel);
 
     let mut req = Request::new(SendBundleRequest {
         bundle: Some(Bundle {
-            header: Some(Header {
-                ts: Some(now_ts()?),
-            }),
+            header: Some(Header { ts: Some(now_ts()?) }),
             packets: vec![Packet {
                 data: tx_bytes,
                 meta: Some(Meta {
@@ -214,15 +197,10 @@ async fn send_to_endpoint(
         }),
     });
 
-    let bearer = MetadataValue::try_from(format!("Bearer {token}"))
-        .context("build bearer metadata failed")?;
+    let bearer = MetadataValue::try_from(format!("Bearer {token}")).context("build bearer metadata failed")?;
     req.metadata_mut().insert("authorization", bearer);
 
-    let resp = client
-        .send_bundle(req)
-        .await
-        .context("SendBundle gRPC failed")?
-        .into_inner();
+    let resp = client.send_bundle(req).await.context("SendBundle gRPC failed")?.into_inner();
 
     Ok(resp.uuid)
 }
@@ -272,9 +250,7 @@ async fn connect(endpoint: &str) -> anyhow::Result<Channel> {
 }
 
 fn now_ts() -> anyhow::Result<Timestamp> {
-    let d = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .context("system clock error")?;
+    let d = SystemTime::now().duration_since(UNIX_EPOCH).context("system clock error")?;
     Ok(Timestamp {
         seconds: d.as_secs() as i64,
         nanos: d.subsec_nanos() as i32,
@@ -282,9 +258,5 @@ fn now_ts() -> anyhow::Result<Timestamp> {
 }
 
 fn region_name(endpoint: &str) -> &str {
-    endpoint
-        .trim_start_matches("https://")
-        .split('.')
-        .next()
-        .unwrap_or(endpoint)
+    endpoint.trim_start_matches("https://").split('.').next().unwrap_or(endpoint)
 }

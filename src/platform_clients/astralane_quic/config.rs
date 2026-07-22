@@ -66,15 +66,15 @@ pub mod error_codes {
 /// Get the appropriate QUIC endpoint based on region
 pub fn get_quic_endpoint(region: &Region) -> &'static str {
     match region {
-        Region::Frankfurt => ASTRALANE_QUIC_ENDPOINTS[0], // Recommended Frankfurt
+        Region::Frankfurt => ASTRALANE_QUIC_ENDPOINTS[0],  // Recommended Frankfurt
         Region::LosAngeles => ASTRALANE_QUIC_ENDPOINTS[2], // San Francisco
-        Region::Tokyo => ASTRALANE_QUIC_ENDPOINTS[3],     // Tokyo
-        Region::NewYork => ASTRALANE_QUIC_ENDPOINTS[4],   // New York
-        Region::Amsterdam => ASTRALANE_QUIC_ENDPOINTS[5], // Recommended Amsterdam
-        Region::Singapore => ASTRALANE_QUIC_ENDPOINTS[8], // Singapore
-        Region::Limburg => ASTRALANE_QUIC_ENDPOINTS[7],   // Limburg
-        Region::Lithuania => ASTRALANE_QUIC_ENDPOINTS[9], // Lithuania
-        _ => ASTRALANE_QUIC_ENDPOINTS[0],                 // Default to Frankfurt
+        Region::Tokyo => ASTRALANE_QUIC_ENDPOINTS[3],      // Tokyo
+        Region::NewYork => ASTRALANE_QUIC_ENDPOINTS[4],    // New York
+        Region::Amsterdam => ASTRALANE_QUIC_ENDPOINTS[5],  // Recommended Amsterdam
+        Region::Singapore => ASTRALANE_QUIC_ENDPOINTS[8],  // Singapore
+        Region::Limburg => ASTRALANE_QUIC_ENDPOINTS[7],    // Limburg
+        Region::Lithuania => ASTRALANE_QUIC_ENDPOINTS[9],  // Lithuania
+        _ => ASTRALANE_QUIC_ENDPOINTS[0],                  // Default to Frankfurt
     }
 }
 

@@ -98,6 +98,58 @@ impl Astralane {
             http_client,
         }
     }
+
+    /// 生成 BundleSender 注入到 BundleBuilder
+    pub fn bundle_sender() -> Box<dyn crate::platform_clients::BundleSender> {
+        Box::new(Astralane::new())
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::platform_clients::BundleSender for Astralane {
+    async fn send_bundle(&self, txs: &[crate::platform_clients::SolTx]) -> Result<Vec<Signature>, String> {
+        use crate::platform_clients::SolTx;
+
+        // 构建 IrisB sendBatch 二进制 body: [u16 BE len][bincode tx]...
+        let mut body = Vec::new();
+        let mut sigs = Vec::with_capacity(txs.len());
+        for tx in txs {
+            let tx_bytes = match tx {
+                SolTx::Legacy(t) => bincode::serialize(t).map_err(|e| format!("bincode: {e}"))?,
+                SolTx::V0(t) => bincode::serialize(t).map_err(|e| format!("bincode: {e}"))?,
+            };
+            let len = tx_bytes.len() as u16;
+            body.extend_from_slice(&len.to_be_bytes());
+            body.extend_from_slice(&tx_bytes);
+            sigs.push(tx.sig());
+        }
+
+        let url = format!("{}/irisb?api-key={}&method=sendBatch", self.endpoint, self.auth_token);
+        let response = self
+            .http_client
+            .post(&url)
+            .header("Content-Type", "application/octet-stream")
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| format!("send: {e}"))?;
+
+        let status = response.status();
+        let body_text = response.text().await.map_err(|e| format!("read: {e}"))?;
+
+        if !status.is_success() {
+            return Err(format!("irisb sendBatch failed ({status}): {body_text}"));
+        }
+
+        let parsed: serde_json::Value = serde_json::from_str(&body_text).map_err(|e| format!("parse response: {e}"))?;
+        let sig_array = parsed["result"]
+            .as_array()
+            .or_else(|| parsed.as_array())
+            .ok_or_else(|| format!("unexpected response format: {body_text}"))?;
+
+        log::info!("[astralane/irisb] sent {} txs, {} sigs", txs.len(), sig_array.len());
+        Ok(sigs)
+    }
 }
 
 #[async_trait::async_trait]
@@ -150,10 +202,7 @@ impl crate::platform_clients::SendTxEncoded for Astralane {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendBundle for Astralane {
-    async fn send_bundle(
-        &self,
-        txs: &[crate::platform_clients::SolTx],
-    ) -> Result<Vec<Signature>, String> {
+    async fn send_bundle(&self, txs: &[crate::platform_clients::SolTx]) -> Result<Vec<Signature>, String> {
         // 将所有交易序列化并 base64 编码
         let mut encoded_txs = Vec::with_capacity(txs.len());
         let mut sigs: Vec<Signature> = Vec::with_capacity(txs.len());
@@ -220,10 +269,7 @@ impl crate::platform_clients::SendBundle for Astralane {
                     Err(format!("astralane unknown response: {}", response))
                 }
             }
-            Err(e) => Err(format!(
-                "astralane response parse error: {}, raw: {}",
-                e, response
-            )),
+            Err(e) => Err(format!("astralane response parse error: {}, raw: {}", e, response)),
         }
     }
 }

@@ -210,10 +210,7 @@ impl crate::platform_clients::SendBundle for Jito {
                         Err(format!("jito unknown response: {}", response))
                     }
                 }
-                Err(e) => Err(format!(
-                    "jito response parse error: {}, raw: {}",
-                    e, response
-                )),
+                Err(e) => Err(format!("jito response parse error: {}, raw: {}", e, response)),
             }
         })
     }
@@ -238,10 +235,7 @@ impl crate::platform_clients::BuildTx for Jito {
 }
 
 impl crate::platform_clients::BuildBundle for Jito {
-    fn build_bundle<'a>(
-        &'a self,
-        txs: &[SolTx],
-    ) -> crate::platform_clients::BundleEnvelope<'a, Jito> {
+    fn build_bundle<'a>(&'a self, txs: &[SolTx]) -> crate::platform_clients::BundleEnvelope<'a, Jito> {
         crate::platform_clients::BundleEnvelope {
             txs: txs.to_vec(),
             sender: self,

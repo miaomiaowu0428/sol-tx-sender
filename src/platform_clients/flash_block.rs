@@ -173,10 +173,7 @@ impl SendTxEncoded for FlashBlock {
                         Err(format!("flashblock unknown response: {}", response))
                     }
                 }
-                Err(e) => Err(format!(
-                    "flashblock response parse error: {}, raw: {}",
-                    e, response
-                )),
+                Err(e) => Err(format!("flashblock response parse error: {}, raw: {}", e, response)),
             }
         })
     }
@@ -241,10 +238,7 @@ impl crate::platform_clients::SendBundle for FlashBlock {
                     Err(format!("flashblock unknown response: {}", response))
                 }
             }
-            Err(e) => Err(format!(
-                "flashblock response parse error: {}, raw: {}",
-                e, response
-            )),
+            Err(e) => Err(format!("flashblock response parse error: {}, raw: {}", e, response)),
         }
     }
 }
@@ -266,10 +260,7 @@ impl crate::platform_clients::BuildTx for FlashBlock {
 }
 
 impl crate::platform_clients::BuildBundle for FlashBlock {
-    fn build_bundle<'a>(
-        &'a self,
-        txs: &[SolTx],
-    ) -> crate::platform_clients::BundleEnvelope<'a, FlashBlock> {
+    fn build_bundle<'a>(&'a self, txs: &[SolTx]) -> crate::platform_clients::BundleEnvelope<'a, FlashBlock> {
         crate::platform_clients::BundleEnvelope {
             txs: txs.to_vec(),
             sender: self,

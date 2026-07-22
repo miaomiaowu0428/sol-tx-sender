@@ -50,8 +50,8 @@ impl EverStakeQuic {
 
         crypto.alpn_protocols = ALPN_SWQOS_TX_PROTOCOL.iter().map(|p| p.to_vec()).collect();
 
-        let client_crypto = QuicClientConfig::try_from(crypto)
-            .map_err(|err| "failed to convert rustls config into quinn crypto config")?;
+        let client_crypto =
+            QuicClientConfig::try_from(crypto).map_err(|err| "failed to convert rustls config into quinn crypto config")?;
         let mut client_config = quinn::ClientConfig::new(Arc::new(client_crypto));
         let mut transport_config = quinn::TransportConfig::default();
 
@@ -64,16 +64,13 @@ impl EverStakeQuic {
 
         client_config.transport_config(Arc::new(transport_config)); // 将配置注入
 
-        let mut endpoint = Endpoint::client("0.0.0.0:0".parse().map_err(|_| "fail to parse ip")?)
-            .map_err(|e| e.to_string())?;
+        let mut endpoint = Endpoint::client("0.0.0.0:0".parse().map_err(|_| "fail to parse ip")?).map_err(|e| e.to_string())?;
         endpoint.set_default_client_config(client_config.clone());
 
         let connection = endpoint
             .connect_with(
                 client_config,
-                Self::get_endpoint()
-                    .parse()
-                    .map_err(|_| "fail to get endpoint")?,
+                Self::get_endpoint().parse().map_err(|_| "fail to get endpoint")?,
                 "everstake_swqos",
             )
             .map_err(|e| e.to_string())?
@@ -97,15 +94,14 @@ impl EverStakeQuic {
 
         crypto.alpn_protocols = ALPN_SWQOS_TX_PROTOCOL.iter().map(|p| p.to_vec()).collect();
 
-        let client_crypto = QuicClientConfig::try_from(crypto)
-            .map_err(|_| "failed to convert rustls config into quinn crypto config")?;
+        let client_crypto =
+            QuicClientConfig::try_from(crypto).map_err(|_| "failed to convert rustls config into quinn crypto config")?;
         let mut client_config = quinn::ClientConfig::new(Arc::new(client_crypto));
         let mut transport_config = quinn::TransportConfig::default();
         transport_config.keep_alive_interval(Some(Duration::from_secs(10)));
         client_config.transport_config(Arc::new(transport_config));
 
-        let mut endpoint = Endpoint::client("0.0.0.0:0".parse().map_err(|_| "fail to parse ip")?)
-            .map_err(|e| e.to_string())?;
+        let mut endpoint = Endpoint::client("0.0.0.0:0".parse().map_err(|_| "fail to parse ip")?).map_err(|e| e.to_string())?;
         endpoint.set_default_client_config(client_config.clone());
 
         let quic_endpoint = match region {
@@ -140,15 +136,8 @@ impl EverStakeQuic {
             .expect("Transaction must have at least one signature");
         let serialized_tx = bincode::serialize(transaction).map_err(|e| e.to_string())?;
 
-        let mut send_stream = self
-            .connection
-            .open_uni()
-            .await
-            .map_err(|e| e.to_string())?;
-        send_stream
-            .write_all(&serialized_tx)
-            .await
-            .map_err(|e| e.to_string())?;
+        let mut send_stream = self.connection.open_uni().await.map_err(|e| e.to_string())?;
+        send_stream.write_all(&serialized_tx).await.map_err(|e| e.to_string())?;
         send_stream.finish().map_err(|e| e.to_string())?;
 
         info!("Transaction {signature:?} has been sent");
@@ -160,15 +149,8 @@ impl EverStakeQuic {
         // 如果你依然需要提取 signature 用于打印日志，可以只解析前 64 字节（Solana 签名在最前面）
         // 或者直接跳过解析，只打印长度
 
-        let mut send_stream = self
-            .connection
-            .open_uni()
-            .await
-            .map_err(|e| e.to_string())?;
-        send_stream
-            .write_all(raw_tx)
-            .await
-            .map_err(|e| e.to_string())?;
+        let mut send_stream = self.connection.open_uni().await.map_err(|e| e.to_string())?;
+        send_stream.write_all(raw_tx).await.map_err(|e| e.to_string())?;
         send_stream.finish().map_err(|e| e.to_string())?;
         Ok(())
     }

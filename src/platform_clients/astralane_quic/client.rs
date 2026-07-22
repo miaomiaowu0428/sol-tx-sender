@@ -32,8 +32,7 @@ impl AstralaneQuic {
 
     pub async fn new() -> Result<Self, String> {
         let endpoint = Self::get_endpoint();
-        let api_key = env::var("ASTRALANE_KEY")
-            .map_err(|e| format!("ASTRALANE_KEY env var required: {}", e))?;
+        let api_key = env::var("ASTRALANE_KEY").map_err(|e| format!("ASTRALANE_KEY env var required: {}", e))?;
 
         let client = AstralaneQuicClient::connect(&endpoint, &api_key)
             .await
@@ -63,8 +62,7 @@ impl AstralaneQuic {
 
     // Sync version for convenience
     pub async fn send_transaction(&self, tx: &Transaction) -> Result<Signature, String> {
-        let tx_bytes = bincode::serialize(tx)
-            .map_err(|e| format!("Failed to serialize transaction: {}", e))?;
+        let tx_bytes = bincode::serialize(tx).map_err(|e| format!("Failed to serialize transaction: {}", e))?;
 
         self.client
             .send_transaction(&tx_bytes)
@@ -97,13 +95,9 @@ impl SendTxEncoded for AstralaneQuic {
             .map_err(|e| format!("Astralane QUIC send error: {}", e))?;
 
         // Try parsing as VersionedTransaction first (V0), fallback to Transaction (legacy)
-        let sig = if let Ok(v0tx) =
-            bincode::deserialize::<solana_sdk::transaction::VersionedTransaction>(&tx_bytes)
-        {
+        let sig = if let Ok(v0tx) = bincode::deserialize::<solana_sdk::transaction::VersionedTransaction>(&tx_bytes) {
             v0tx.signatures[0]
-        } else if let Ok(tx) =
-            bincode::deserialize::<solana_sdk::transaction::Transaction>(&tx_bytes)
-        {
+        } else if let Ok(tx) = bincode::deserialize::<solana_sdk::transaction::Transaction>(&tx_bytes) {
             tx.signatures[0]
         } else {
             return Err("Failed to deserialize transaction for signature".to_string());

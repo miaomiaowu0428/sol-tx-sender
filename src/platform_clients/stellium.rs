@@ -48,7 +48,7 @@ impl Stellium {
     /// 根据区域获取对应的端点
     pub fn get_endpoint_for_region(region: Region) -> String {
         match region {
-            Region::NewYork => STELLIUM_ENDPOINTS[0].to_string(), // ewr1.flashrpc.com
+            Region::NewYork => STELLIUM_ENDPOINTS[0].to_string(),   // ewr1.flashrpc.com
             Region::Frankfurt => STELLIUM_ENDPOINTS[1].to_string(), // fra1.flashrpc.com
             Region::Amsterdam => STELLIUM_ENDPOINTS[2].to_string(), // ams1.flashrpc.com
             Region::London => STELLIUM_ENDPOINTS[3].to_string(),
@@ -132,20 +132,14 @@ impl crate::platform_clients::SendTxEncoded for Stellium {
             info!("Stellium response: {}", response);
 
             // 解析响应
-            let parsed_response: serde_json::Value = serde_json::from_str(&response)
-                .map_err(|e| format!("Failed to parse response: {}", e))?;
+            let parsed_response: serde_json::Value =
+                serde_json::from_str(&response).map_err(|e| format!("Failed to parse response: {}", e))?;
 
             // 检查是否有错误
             if let Some(error) = parsed_response.get("error") {
                 let error_code = error.get("code").and_then(|c| c.as_i64()).unwrap_or(-1);
-                let error_message = error
-                    .get("message")
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("Unknown error");
-                return Err(format!(
-                    "Stellium error (code {}): {}",
-                    error_code, error_message
-                ));
+                let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+                return Err(format!("Stellium error (code {}): {}", error_code, error_message));
             }
 
             // 检查是否有结果

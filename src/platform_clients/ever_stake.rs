@@ -77,8 +77,7 @@ impl crate::platform_clients::SendTxEncoded for EverStake {
                 .decode(tx_base64)
                 .map_err(|e| e.to_string())?;
 
-            let tx: solana_sdk::transaction::Transaction =
-                bincode::deserialize(&bytes).map_err(|e| e.to_string())?;
+            let tx: solana_sdk::transaction::Transaction = bincode::deserialize(&bytes).map_err(|e| e.to_string())?;
 
             match self.json_rpc_client.send_transaction(&tx).await {
                 Ok(_) => Ok(()),
