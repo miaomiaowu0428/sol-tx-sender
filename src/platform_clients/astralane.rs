@@ -23,6 +23,7 @@ use std::sync::Arc;
 use utils::log_time;
 
 use solana_sdk::signature::Signature;
+use crate::platform_clients::BuildTx;
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 

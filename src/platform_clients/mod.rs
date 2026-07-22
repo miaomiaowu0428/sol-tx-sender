@@ -724,7 +724,7 @@ impl BundleBuilder {
         self.txs.push(SolTx::V0(transaction));
 
         // 检查最新交易的序列化大小
-        if let SolTx::V0(ref v0) = self.txs.last().unwrap() {
+        if let SolTx::V0(v0) = self.txs.last().unwrap() {
             let size = bincode::serialize(v0).map(|b| b.len()).unwrap_or(usize::MAX);
             let max = self.sender.max_tx_size();
             if size > max {
