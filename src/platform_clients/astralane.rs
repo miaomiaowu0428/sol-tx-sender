@@ -111,6 +111,10 @@ impl crate::platform_clients::BundleSender for Astralane {
         self.get_tip_address()
     }
 
+    fn max_tx_size(&self) -> usize {
+        1232
+    }
+
     async fn send_bundle(&self, txs: &[crate::platform_clients::SolTx]) -> Result<Vec<Signature>, String> {
         use crate::platform_clients::SolTx;
 

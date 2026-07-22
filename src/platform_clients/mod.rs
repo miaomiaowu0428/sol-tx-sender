@@ -607,6 +607,8 @@ pub trait BundleSender: Send + Sync {
     async fn send_bundle(&self, txs: &[SolTx]) -> Result<Vec<Signature>, String>;
     /// 该平台的 tip 接收地址
     fn tip_address(&self) -> Pubkey;
+    /// 单笔交易最大字节数（取决于传输格式：base64 / binary）
+    fn max_tx_size(&self) -> usize;
 }
 
 /// Bundle append 失败时携带 builder，不丢已添加的交易
@@ -720,6 +722,20 @@ impl BundleBuilder {
             }
         };
         self.txs.push(SolTx::V0(transaction));
+
+        // 检查最新交易的序列化大小
+        if let SolTx::V0(ref v0) = self.txs.last().unwrap() {
+            let size = bincode::serialize(v0).map(|b| b.len()).unwrap_or(usize::MAX);
+            let max = self.sender.max_tx_size();
+            if size > max {
+                self.txs.pop();
+                return Err(BundleError {
+                    msg: format!("tx too large: {size} > {max}"),
+                    builder: self,
+                });
+            }
+        }
+
         Ok(self)
     }
 
