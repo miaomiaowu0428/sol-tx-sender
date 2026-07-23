@@ -138,7 +138,7 @@ impl crate::platform_clients::BundleSender for Astralane {
         let response = self
             .http_client
             .post(&url)
-            .header("Content-Type", "application/octet-stream")
+            .header("content-type", "application/octet-stream")
             .body(body)
             .send()
             .await
