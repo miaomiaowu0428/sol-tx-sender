@@ -267,3 +267,18 @@ impl crate::platform_clients::BuildBundle for FlashBlock {
         }
     }
 }
+
+#[async_trait::async_trait]
+impl crate::platform_clients::BundleSender for FlashBlock {
+    fn tip_address(&self) -> Pubkey {
+        Self::get_tip_address()
+    }
+
+    fn max_tx_size(&self) -> usize {
+        1500
+    }
+
+    async fn send_bundle(&self, txs: &[crate::platform_clients::SolTx]) -> Result<Vec<Signature>, String> {
+        <Self as crate::platform_clients::SendBundle>::send_bundle(self, txs).await
+    }
+}
