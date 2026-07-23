@@ -22,8 +22,8 @@ use serde_json::json;
 use std::sync::Arc;
 use utils::log_time;
 
-use solana_sdk::signature::Signature;
 use crate::platform_clients::BuildTx;
+use solana_sdk::signature::Signature;
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
@@ -133,7 +133,8 @@ impl crate::platform_clients::BundleSender for Astralane {
             sigs.push(tx.sig());
         }
 
-        let url = format!("{}/irisb?api-key={}&method=sendBatch", self.endpoint, self.auth_token);
+        let base = self.endpoint.strip_suffix("/iris").unwrap_or(&self.endpoint);
+        let url = format!("{base}/irisb?api-key={}&method=sendBatch", self.auth_token);
         let response = self
             .http_client
             .post(&url)
