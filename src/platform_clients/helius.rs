@@ -12,6 +12,7 @@ use std::sync::Arc;
 use utils::log_time;
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
+use solana_sdk::signature::Signature;
 
 use crate::constants::{HTTP_CLIENT, REGION};
 use crate::platform_clients::{PlatformName, Region, TxExt};
@@ -164,4 +165,76 @@ impl crate::platform_clients::BuildTx for Helius {
         HELIUS_TIP_ACCOUNTS.to_vec()
     }
     // 使用默认实现，无需重写 build_tx
+}
+
+#[async_trait::async_trait]
+impl crate::platform_clients::SendBundle for Helius {
+    /// Sender Max `sendBundle`：直接 POST 到 `/fast` 端点，最多 4 笔，base64 编码。
+    ///
+    /// 按官方要求：至少一笔交易需带 ≥0.001 SOL 的 Sender tip，每笔需带 priority fee
+    /// （由 `BundleBuilder::append` 的 tip / cu 参数控制）。追踪按交易签名，不用 bundle id。
+    async fn send_bundle(&self, txs: &[VersionedTransaction]) -> Result<Vec<Signature>, String> {
+        if txs.is_empty() || txs.len() > 4 {
+            return Err(format!("Helius sendBundle requires 1-4 transactions, got {}", txs.len()));
+        }
+        log_time!("helius sendBundle: ", {
+            let mut encoded_txs = Vec::with_capacity(txs.len());
+            let mut sigs: Vec<Signature> = Vec::with_capacity(txs.len());
+            for tx in txs {
+                let tx_base64 = tx.to_base64().map_err(|e| e.to_string())?;
+                encoded_txs.push(tx_base64);
+                sigs.push(tx.sig());
+            }
+            let res = self
+                .http_client
+                .post(&self.endpoint)
+                .header("Content-Type", "application/json")
+                .header("api-key", self.auth_token.as_str())
+                .json(&json!({
+                    "id": 1,
+                    "jsonrpc": "2.0",
+                    "method": "sendBundle",
+                    "params": [
+                        encoded_txs,
+                        { "encoding": "base64" }
+                    ],
+                }))
+                .send()
+                .await;
+            let response = match res {
+                Ok(resp) => match resp.text().await {
+                    Ok(text) => text,
+                    Err(e) => return Err(format!("response text error: {}", e)),
+                },
+                Err(e) => {
+                    log::error!("helius sendBundle send error: {:?}", e);
+                    return Err(format!("send error: {}", e));
+                }
+            };
+            info!("helius sendBundle: {}", response);
+            // 响应含 error 字段（如 tip 不足被拒）时视为失败
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&response) {
+                if let Some(err) = v.get("error") {
+                    return Err(format!("helius sendBundle error: {}", err));
+                }
+            }
+            Ok(sigs)
+        })
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::platform_clients::BundleSender for Helius {
+    fn tip_address(&self) -> Pubkey {
+        *HELIUS_TIP_ACCOUNTS
+            .choose(&mut rand::rng())
+            .or_else(|| HELIUS_TIP_ACCOUNTS.first())
+            .unwrap()
+    }
+    fn max_tx_size(&self) -> usize {
+        1500
+    }
+    async fn send_bundle(&self, txs: &[VersionedTransaction]) -> Result<Vec<Signature>, String> {
+        <Self as crate::platform_clients::SendBundle>::send_bundle(self, txs).await
+    }
 }
