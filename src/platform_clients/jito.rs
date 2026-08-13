@@ -25,7 +25,8 @@ use solana_sdk::signature::Signature;
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{PlatformName, Region, SolTx};
+use crate::platform_clients::{PlatformName, Region, TxExt};
+use solana_sdk::transaction::VersionedTransaction;
 pub const JITO_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5"),
     pubkey!("HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe"),
@@ -105,10 +106,10 @@ impl Jito {
 }
 
 #[async_trait::async_trait]
-impl crate::platform_clients::SendTxEncoded for Jito {
-    /// 直接接收 base64 编码后的交易数据并发送
-    async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
+impl crate::platform_clients::SendTx for Jito {
+    async fn send_tx(&self, tx: &VersionedTransaction) -> Result<(), String> {
         log_time!("jito send:", {
+            let tx_base64 = tx.to_base64().map_err(|e| e.to_string())?;
             let request_body = match serde_json::to_string(&json!({
                 "id": 1,
                 "jsonrpc": "2.0",
@@ -153,7 +154,7 @@ impl crate::platform_clients::SendTxEncoded for Jito {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendBundle for Jito {
-    async fn send_bundle(&self, txs: &[SolTx]) -> Result<Vec<Signature>, String> {
+    async fn send_bundle(&self, txs: &[VersionedTransaction]) -> Result<Vec<Signature>, String> {
         log_time!("jito bundle send: ", {
             // 将所有交易序列化并 base64 编码
             let mut encoded_txs = Vec::with_capacity(txs.len());
@@ -243,7 +244,7 @@ impl crate::platform_clients::BundleSender for Jito {
         1500
     }
 
-    async fn send_bundle(&self, txs: &[crate::platform_clients::SolTx]) -> Result<Vec<Signature>, String> {
+    async fn send_bundle(&self, txs: &[VersionedTransaction]) -> Result<Vec<Signature>, String> {
         <Self as crate::platform_clients::SendBundle>::send_bundle(self, txs).await
     }
 }

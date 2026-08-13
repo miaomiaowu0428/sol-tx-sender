@@ -8,7 +8,8 @@ use utils::log_time;
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{PlatformName, Region};
+use crate::platform_clients::{PlatformName, Region, TxExt};
+use solana_sdk::transaction::VersionedTransaction;
 
 pub const TEMPORAL_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("TEMPaMeCRFAS9EKF53Jd6KpHxgL47uWLcpFArU1Fanq"),
@@ -93,9 +94,10 @@ impl Temporal {
 }
 
 #[async_trait::async_trait]
-impl crate::platform_clients::SendTxEncoded for Temporal {
-    async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
+impl crate::platform_clients::SendTx for Temporal {
+    async fn send_tx(&self, tx: &VersionedTransaction) -> Result<(), String> {
         log_time!("temproal send: ", {
+            let tx_base64 = tx.to_base64().map_err(|e| e.to_string())?;
             let mut url = String::with_capacity(self.endpoint.len() + self.token.len() + 20);
             url.push_str(&self.endpoint);
             url.push_str("?c=");

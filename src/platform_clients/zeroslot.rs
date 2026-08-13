@@ -8,7 +8,8 @@ use utils::log_time;
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{PlatformName, Region};
+use crate::platform_clients::{PlatformName, Region, TxExt};
+use solana_sdk::transaction::VersionedTransaction;
 
 pub const ZEROSLOT_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("6fQaVhYZA4w3MBSXjJ81Vf6W1EDYeUPXpgVQ6UQyU1Av"),
@@ -92,9 +93,10 @@ impl ZeroSlot {
 }
 
 #[async_trait::async_trait]
-impl crate::platform_clients::SendTxEncoded for ZeroSlot {
-    async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
+impl crate::platform_clients::SendTx for ZeroSlot {
+    async fn send_tx(&self, tx: &VersionedTransaction) -> Result<(), String> {
         log_time!("0slot send: ", {
+            let tx_base64 = tx.to_base64().map_err(|e| e.to_string())?;
             let mut url = String::new();
             url.push_str(&self.endpoint);
             url.push_str("?api-key=");

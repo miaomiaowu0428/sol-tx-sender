@@ -1,10 +1,9 @@
-use base64::Engine;
 use log::info;
 use quinn::crypto::rustls::QuicClientConfig;
 use quinn::{Connection, Endpoint};
 use rand::seq::IndexedRandom;
 use solana_sdk::pubkey::Pubkey;
-use solana_sdk::{signature::Keypair, transaction::Transaction};
+use solana_sdk::{signature::Keypair, transaction::VersionedTransaction};
 use solana_tls_utils::{SkipServerVerification, new_dummy_x509_certificate};
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,7 +12,7 @@ use utils::log_time;
 
 use crate::constants::REGION;
 use crate::platform_clients::ever_stake::EVER_STAKE_TIP_ACCOUNTS;
-use crate::platform_clients::{PlatformName, Region, SendTxEncoded};
+use crate::platform_clients::{PlatformName, Region, SendTx};
 
 const ALPN_SWQOS_TX_PROTOCOL: &[&[u8]] = &[b"solana-tpu"];
 
@@ -124,22 +123,6 @@ impl EverStakeQuic {
         })
     }
 
-    // Send a transaction via quic using a unidirectional stream
-    pub async fn send_transaction(&self, transaction: &Transaction) -> Result<(), String> {
-        let signature = transaction
-            .signatures
-            .first()
-            .expect("Transaction must have at least one signature");
-        let serialized_tx = bincode::serialize(transaction).map_err(|e| e.to_string())?;
-
-        let mut send_stream = self.connection.open_uni().await.map_err(|e| e.to_string())?;
-        send_stream.write_all(&serialized_tx).await.map_err(|e| e.to_string())?;
-        send_stream.finish().map_err(|e| e.to_string())?;
-
-        info!("Transaction {signature:?} has been sent");
-        Ok(())
-    }
-
     // 核心逻辑：只管发字节，不关心内容
     pub async fn send_raw_transaction(&self, raw_tx: &[u8]) -> Result<(), String> {
         // 如果你依然需要提取 signature 用于打印日志，可以只解析前 64 字节（Solana 签名在最前面）
@@ -153,15 +136,11 @@ impl EverStakeQuic {
 }
 
 #[async_trait::async_trait]
-impl SendTxEncoded for EverStakeQuic {
-    async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
+impl SendTx for EverStakeQuic {
+    async fn send_tx(&self, tx: &VersionedTransaction) -> Result<(), String> {
         log_time!("ever stake quic send: ", {
-            // 只需要 Base64 解码一次
-            let bytes = base64::prelude::BASE64_STANDARD
-                .decode(tx_base64)
-                .map_err(|e| e.to_string())?;
-
-            // 直接发送解码后的字节，无需转成 Transaction 结构体
+            // 直接序列化为字节发送，无需 base64
+            let bytes = bincode::serialize(tx).map_err(|e| e.to_string())?;
             self.send_raw_transaction(&bytes)
                 .await
                 .map_err(|e| format!("Everstake Quic send error: {}", e))

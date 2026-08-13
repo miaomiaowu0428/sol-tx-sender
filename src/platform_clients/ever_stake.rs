@@ -1,4 +1,3 @@
-use base64::Engine;
 use log::info;
 use rand::seq::IndexedRandom;
 use solana_client::nonblocking::rpc_client::RpcClient;
@@ -7,6 +6,7 @@ use std::sync::Arc;
 use utils::log_time;
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
+use solana_sdk::transaction::VersionedTransaction;
 
 use crate::constants::REGION;
 use crate::platform_clients::{PlatformName, Region};
@@ -69,16 +69,10 @@ impl EverStake {
 }
 
 #[async_trait::async_trait]
-impl crate::platform_clients::SendTxEncoded for EverStake {
-    async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
+impl crate::platform_clients::SendTx for EverStake {
+    async fn send_tx(&self, tx: &VersionedTransaction) -> Result<(), String> {
         log_time!("ever stake rpc send: ", {
-            let bytes = base64::prelude::BASE64_STANDARD
-                .decode(tx_base64)
-                .map_err(|e| e.to_string())?;
-
-            let tx: solana_sdk::transaction::Transaction = bincode::deserialize(&bytes).map_err(|e| e.to_string())?;
-
-            match self.json_rpc_client.send_transaction(&tx).await {
+            match self.json_rpc_client.send_transaction(tx).await {
                 Ok(_) => Ok(()),
                 Err(e) => Err(format!("Everstake send error: {}", e)),
             }

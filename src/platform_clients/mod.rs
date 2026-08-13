@@ -1,7 +1,6 @@
 use solana_compute_budget_interface::ComputeBudgetInstruction;
+use base64::Engine;
 use solana_sdk::message::AddressLookupTableAccount;
-use solana_sdk::transaction::Transaction;
-
 use solana_sdk::transaction::VersionedTransaction;
 use solana_system_interface::instruction::advance_nonce_account;
 use solana_system_interface::instruction::transfer;
@@ -34,46 +33,21 @@ pub mod stellium;
 pub mod temporal;
 pub mod zeroslot;
 
-// 通用交易枚举
-/// 通用交易类型，兼容 Legacy 和 V0 版本
-#[derive(Clone, Debug)]
-pub enum SolTx {
-    Legacy(Transaction),
-    V0(VersionedTransaction),
-}
-
-impl SolTx {
+/// `VersionedTransaction` 的便捷扩展：序列化与签名提取
+pub trait TxExt {
     /// 将交易序列化为 base64 字符串
-    pub fn to_base64(&self) -> Result<String, Box<dyn std::error::Error>> {
-        match self {
-            SolTx::Legacy(tx) => {
-                let data = bincode::serialize(tx)?;
-                Ok(base64::encode(data))
-            }
-            SolTx::V0(v0tx) => {
-                let data = bincode::serialize(v0tx)?;
-                Ok(base64::encode(data))
-            }
-        }
-    }
-    pub fn sig(&self) -> Signature {
-        match self {
-            SolTx::Legacy(transaction) => transaction.signatures[0],
-            SolTx::V0(versioned_transaction) => versioned_transaction.signatures[0],
-        }
-    }
+    fn to_base64(&self) -> Result<String, Box<dyn std::error::Error>>;
+    /// 获取交易签名
+    fn sig(&self) -> Signature;
 }
 
-// 自定义 SolTx 的 Serialize 实现，只序列化内部内容，不包含变体信息
-impl serde::Serialize for SolTx {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            SolTx::Legacy(tx) => tx.serialize(serializer),
-            SolTx::V0(v0tx) => v0tx.serialize(serializer),
-        }
+impl TxExt for VersionedTransaction {
+    fn to_base64(&self) -> Result<String, Box<dyn std::error::Error>> {
+        let data = bincode::serialize(self)?;
+        Ok(base64::engine::general_purpose::STANDARD.encode(data))
+    }
+    fn sig(&self) -> Signature {
+        self.signatures[0]
     }
 }
 
@@ -118,7 +92,7 @@ impl std::fmt::Display for PlatformName {
 /// 交易小费与 CU 相关信息
 #[derive(Debug, Clone)]
 pub struct DetailedTx {
-    pub tx: SolTx,
+    pub tx: VersionedTransaction,
     pub platform: PlatformName,
     pub tip: Option<u64>,
     pub cu_limit: Option<u32>,
@@ -142,18 +116,18 @@ impl HashParam {
     }
 }
 // 单笔交易发送 trait
-/// 单笔交易发送 trait，发送 base64 编码后的交易
+/// 单笔交易发送 trait，直接接收已签名的 `VersionedTransaction`，平台自行决定编码方式。
 #[async_trait::async_trait]
-pub trait SendTxEncoded: Sync + Send {
-    /// 发送 base64 编码后的交易
-    async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String>;
+pub trait SendTx: Sync + Send {
+    /// 发送已签名的交易
+    async fn send_tx(&self, tx: &VersionedTransaction) -> Result<(), String>;
 }
 
 // 批量交易发送 trait
 /// 批量交易发送 trait
 #[async_trait::async_trait]
 pub trait SendBundle: Sync + Send {
-    async fn send_bundle(&self, txs: &[SolTx]) -> Result<Vec<Signature>, String>;
+    async fn send_bundle(&self, txs: &[VersionedTransaction]) -> Result<Vec<Signature>, String>;
 }
 
 // 单笔交易组装 trait
@@ -175,15 +149,15 @@ pub trait BuildTx {
 }
 
 // 单笔 envelope
-/// 单笔交易 envelope，兼容 Legacy/V0，包含 SolTx 和发送者
-pub struct TxEnvelope<'a, T: SendTxEncoded + Sync + Send + 'a> {
+/// 单笔交易 envelope，包含交易和发送者
+pub struct TxEnvelope<'a, T: SendTx + Sync + Send + 'a> {
     pub tx: DetailedTx,
     pub sender: &'a T,
 }
 
-impl<'a, T: SendTxEncoded + Sync + Send + 'a> TxEnvelope<'a, T> {
-    /// 获取内部 SolTx
-    pub fn inner_tx(&self) -> &SolTx {
+impl<'a, T: SendTx + Sync + Send + 'a> TxEnvelope<'a, T> {
+    /// 获取内部交易
+    pub fn inner_tx(&self) -> &VersionedTransaction {
         &self.tx.tx
     }
     /// 获取签名
@@ -199,12 +173,11 @@ pub trait TxSend: Send + Sync {
     fn sig(&self) -> Signature;
 }
 
-/// TxEnvelope 的发送实现，兼容 Legacy/V0
+/// TxEnvelope 的发送实现
 #[async_trait::async_trait]
-impl<'a, T: SendTxEncoded + Sync + Send + 'a> TxSend for TxEnvelope<'a, T> {
+impl<'a, T: SendTx + Sync + Send + 'a> TxSend for TxEnvelope<'a, T> {
     async fn send(&self) -> Result<Signature, String> {
-        let b64 = self.inner_tx().to_base64().map_err(|e| e.to_string())?;
-        let _ = self.sender.send_tx_encoded(&b64).await;
+        self.sender.send_tx(self.inner_tx()).await?;
         Ok(self.inner_tx().sig())
     }
     fn sig(&self) -> Signature {
@@ -300,7 +273,7 @@ pub trait BuildV0Tx {
         memo: Option<Vec<&str>>,
     ) -> Result<TxEnvelope<'a, Self>, Box<dyn std::error::Error + Send + Sync>>
     where
-        Self: Sync + Send + Sized + Display + SendTxEncoded + BuildTx,
+        Self: Sync + Send + Sized + Display + SendTx + BuildTx,
     {
         use solana_sdk::message::v0::Message as V0Message;
         use solana_sdk::transaction::VersionedTransaction;
@@ -364,7 +337,7 @@ pub trait BuildV0Tx {
             info!("  sig: {}", sig);
             Ok(TxEnvelope {
                 tx: DetailedTx {
-                    tx: SolTx::V0(transaction),
+                    tx: transaction,
                     platform: self.platform(),
                     tip: *tip,
                     cu_limit: cu.0,
@@ -387,7 +360,7 @@ pub trait BuildV0Tx {
         memo: Option<Vec<&str>>,
     ) -> Result<TxEnvelope<'a, Self>, Box<dyn std::error::Error + Send + Sync>>
     where
-        Self: Sync + Send + Sized + Display + SendTxEncoded + BuildTx,
+        Self: Sync + Send + Sized + Display + SendTx + BuildTx,
     {
         use solana_sdk::message::v0::Message as V0Message;
         use solana_sdk::transaction::VersionedTransaction;
@@ -430,7 +403,7 @@ pub trait BuildV0Tx {
             info!("  sig: {}", sig);
             Ok(TxEnvelope {
                 tx: DetailedTx {
-                    tx: SolTx::V0(transaction),
+                    tx: transaction,
                     platform: self.platform(),
                     tip: *tip,
                     cu_limit: cu.0,
@@ -485,7 +458,7 @@ fn test_region() {
 /// Bundle 发送接口（各平台实现，注入到 BundleBuilder）
 #[async_trait::async_trait]
 pub trait BundleSender: Send + Sync {
-    async fn send_bundle(&self, txs: &[SolTx]) -> Result<Vec<Signature>, String>;
+    async fn send_bundle(&self, txs: &[VersionedTransaction]) -> Result<Vec<Signature>, String>;
     /// 该平台的 tip 接收地址
     fn tip_address(&self) -> Pubkey;
     /// 单笔交易最大字节数（取决于传输格式：base64 / binary）
@@ -506,7 +479,7 @@ impl<T> BundleError<T> {
 
 /// 平台无关的 bundle 构建器
 pub struct BundleBuilder {
-    txs: Vec<SolTx>,
+    txs: Vec<VersionedTransaction>,
     sender: Box<dyn BundleSender>,
 }
 
@@ -602,19 +575,18 @@ impl BundleBuilder {
                 });
             }
         };
-        self.txs.push(SolTx::V0(transaction));
+        self.txs.push(transaction);
 
         // 检查最新交易的序列化大小
-        if let SolTx::V0(v0) = self.txs.last().unwrap() {
-            let size = bincode::serialize(v0).map(|b| b.len()).unwrap_or(usize::MAX);
-            let max = self.sender.max_tx_size();
-            if size > max {
-                self.txs.pop();
-                return Err(BundleError {
-                    msg: format!("tx too large: {size} > {max}"),
-                    builder: self,
-                });
-            }
+        let v0 = self.txs.last().unwrap();
+        let size = bincode::serialize(v0).map(|b| b.len()).unwrap_or(usize::MAX);
+        let max = self.sender.max_tx_size();
+        if size > max {
+            self.txs.pop();
+            return Err(BundleError {
+                msg: format!("tx too large: {size} > {max}"),
+                builder: self,
+            });
         }
 
         Ok(self)

@@ -14,7 +14,8 @@ use utils::log_time;
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{BuildTx, PlatformName, Region, SendTxEncoded};
+use crate::platform_clients::{BuildTx, PlatformName, Region, SendTx, TxExt};
+use solana_sdk::transaction::VersionedTransaction;
 
 const BLOCKRAZOR_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("FjmZZrFvhnqqb9ThCuMVnENaM3JGVuGWNyCAxRJcFpg9"),
@@ -118,9 +119,10 @@ fn read_auth_token_from_env() -> String {
 // 新模式实现
 
 #[async_trait::async_trait]
-impl SendTxEncoded for Blockrazor {
-    async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
+impl SendTx for Blockrazor {
+    async fn send_tx(&self, tx: &VersionedTransaction) -> Result<(), String> {
         log_time!("blockrazor send:", {
+            let tx_base64 = tx.to_base64().map_err(|e| e.to_string())?;
             let res = self
                 .http_client
                 .post(&self.endpoint)

@@ -14,7 +14,8 @@ use utils::log_time;
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{PlatformName, Region};
+use crate::platform_clients::{PlatformName, Region, TxExt};
+use solana_sdk::transaction::VersionedTransaction;
 
 // Stellium tip 地址
 pub const STELLIUM_TIP_ACCOUNTS: &[Pubkey] = &[
@@ -88,9 +89,10 @@ impl Stellium {
 }
 
 #[async_trait::async_trait]
-impl crate::platform_clients::SendTxEncoded for Stellium {
-    async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
+impl crate::platform_clients::SendTx for Stellium {
+    async fn send_tx(&self, tx: &VersionedTransaction) -> Result<(), String> {
         log_time!("stellium send: ", {
+            let tx_base64 = tx.to_base64().map_err(|e| e.to_string())?;
             // URL 格式：https://STELLIUM_ENDPOINT/$APIKEY
             let url = format!("{}/{}", self.endpoint, self.api_key);
 

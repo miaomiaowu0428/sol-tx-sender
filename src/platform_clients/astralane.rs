@@ -22,8 +22,9 @@ use serde_json::json;
 use std::sync::Arc;
 use utils::log_time;
 
-use crate::platform_clients::BuildTx;
+use crate::platform_clients::{BuildTx, TxExt};
 use solana_sdk::signature::Signature;
+use solana_sdk::transaction::VersionedTransaction;
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
@@ -115,17 +116,12 @@ impl crate::platform_clients::BundleSender for Astralane {
         1232
     }
 
-    async fn send_bundle(&self, txs: &[crate::platform_clients::SolTx]) -> Result<Vec<Signature>, String> {
-        use crate::platform_clients::SolTx;
-
+    async fn send_bundle(&self, txs: &[VersionedTransaction]) -> Result<Vec<Signature>, String> {
         // 构建 IrisB sendBatch 二进制 body: [u16 BE len][bincode tx]...
         let mut body = Vec::new();
         let mut sigs = Vec::with_capacity(txs.len());
         for tx in txs {
-            let tx_bytes = match tx {
-                SolTx::Legacy(t) => bincode::serialize(t).map_err(|e| format!("bincode: {e}"))?,
-                SolTx::V0(t) => bincode::serialize(t).map_err(|e| format!("bincode: {e}"))?,
-            };
+            let tx_bytes = bincode::serialize(tx).map_err(|e| format!("bincode: {e}"))?;
             let len = tx_bytes.len() as u16;
             body.extend_from_slice(&len.to_be_bytes());
             body.extend_from_slice(&tx_bytes);
@@ -162,9 +158,10 @@ impl crate::platform_clients::BundleSender for Astralane {
 }
 
 #[async_trait::async_trait]
-impl crate::platform_clients::SendTxEncoded for Astralane {
-    async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
+impl crate::platform_clients::SendTx for Astralane {
+    async fn send_tx(&self, tx: &VersionedTransaction) -> Result<(), String> {
         log_time!("astralane send: ", {
+            let tx_base64 = tx.to_base64().map_err(|e| e.to_string())?;
             let req_json = json!({
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -205,7 +202,7 @@ impl crate::platform_clients::SendTxEncoded for Astralane {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendBundle for Astralane {
-    async fn send_bundle(&self, txs: &[crate::platform_clients::SolTx]) -> Result<Vec<Signature>, String> {
+    async fn send_bundle(&self, txs: &[VersionedTransaction]) -> Result<Vec<Signature>, String> {
         // 将所有交易序列化并 base64 编码
         let mut encoded_txs = Vec::with_capacity(txs.len());
         let mut sigs: Vec<Signature> = Vec::with_capacity(txs.len());

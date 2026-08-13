@@ -12,7 +12,8 @@ use solana_sdk::signature::Signature;
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{PlatformName, Region, SendTxEncoded, SolTx};
+use crate::platform_clients::{PlatformName, Region, SendTx, TxExt};
+use solana_sdk::transaction::VersionedTransaction;
 pub const FLASH_BLOCK_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("FLaShB3iXXTWE1vu9wQsChUKq3HFtpMAhb8kAh1pf1wi"),
     pubkey!("FLashhsorBmM9dLpuq6qATawcpqk1Y2aqaZfkd48iT3W"),
@@ -124,9 +125,10 @@ impl FlashBlock {
 }
 
 #[async_trait::async_trait]
-impl SendTxEncoded for FlashBlock {
-    async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
+impl SendTx for FlashBlock {
+    async fn send_tx(&self, tx: &VersionedTransaction) -> Result<(), String> {
         log_time!("flash block send:", {
+            let tx_base64 = tx.to_base64().map_err(|e| e.to_string())?;
             let request_body = match serde_json::to_string(&json!({
                 "id": 1,
                 "jsonrpc": "2.0",
@@ -180,7 +182,7 @@ impl SendTxEncoded for FlashBlock {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendBundle for FlashBlock {
-    async fn send_bundle(&self, txs: &[SolTx]) -> Result<Vec<Signature>, String> {
+    async fn send_bundle(&self, txs: &[VersionedTransaction]) -> Result<Vec<Signature>, String> {
         // 将所有交易序列化并 base64 编码
         let mut encoded_txs = Vec::with_capacity(txs.len());
         let mut sigs: Vec<Signature> = Vec::with_capacity(txs.len());
@@ -268,7 +270,7 @@ impl crate::platform_clients::BundleSender for FlashBlock {
         1500
     }
 
-    async fn send_bundle(&self, txs: &[crate::platform_clients::SolTx]) -> Result<Vec<Signature>, String> {
+    async fn send_bundle(&self, txs: &[VersionedTransaction]) -> Result<Vec<Signature>, String> {
         <Self as crate::platform_clients::SendBundle>::send_bundle(self, txs).await
     }
 }

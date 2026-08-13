@@ -15,7 +15,8 @@ use utils::log_time;
 use solana_sdk::{pubkey, pubkey::Pubkey};
 
 use crate::constants::{HTTP_CLIENT, REGION};
-use crate::platform_clients::{PlatformName, Region};
+use crate::platform_clients::{PlatformName, Region, TxExt};
+use solana_sdk::transaction::VersionedTransaction;
 
 // NextBlock MEV 保护和 tip 地址
 pub const NEXTBLOCK_TIP_ACCOUNTS: &[Pubkey] = &[
@@ -100,9 +101,10 @@ impl NextBlock {
 }
 
 #[async_trait::async_trait]
-impl crate::platform_clients::SendTxEncoded for NextBlock {
-    async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
+impl crate::platform_clients::SendTx for NextBlock {
+    async fn send_tx(&self, tx: &VersionedTransaction) -> Result<(), String> {
         log_time!("next block send: ", {
+            let tx_base64 = tx.to_base64().map_err(|e| e.to_string())?;
             let url = format!("{}/api/v2/submit", self.endpoint);
 
             let res = self
@@ -138,7 +140,7 @@ impl crate::platform_clients::SendTxEncoded for NextBlock {
 
 #[async_trait::async_trait]
 impl crate::platform_clients::SendBundle for NextBlock {
-    async fn send_bundle(&self, txs: &[crate::platform_clients::SolTx]) -> Result<Vec<solana_sdk::signature::Signature>, String> {
+    async fn send_bundle(&self, txs: &[VersionedTransaction]) -> Result<Vec<solana_sdk::signature::Signature>, String> {
         // NextBlock 要求 2-4 笔交易
         if txs.len() < 2 || txs.len() > 4 {
             return Err(format!("NextBlock bundle requires 2-4 transactions, got {}", txs.len()));

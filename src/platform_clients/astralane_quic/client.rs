@@ -1,11 +1,9 @@
 use anyhow::Result;
 use astralane_quic_client::AstralaneQuicClient;
-use base64::Engine;
 use log::info;
 use rand::seq::IndexedRandom;
 use solana_sdk::pubkey::Pubkey;
-use solana_sdk::signature::Signature;
-use solana_sdk::transaction::Transaction;
+use solana_sdk::transaction::VersionedTransaction;
 use std::env;
 use std::fmt;
 use std::sync::Arc;
@@ -13,7 +11,7 @@ use std::sync::Arc;
 use crate::constants::REGION;
 use crate::platform_clients::astralane::ASTRALANE_TIP_ACCOUNTS;
 use crate::platform_clients::astralane_quic::get_quic_endpoint;
-use crate::platform_clients::{PlatformName, Region, SendTxEncoded};
+use crate::platform_clients::{PlatformName, Region, SendTx};
 
 #[derive(Clone)]
 pub struct AstralaneQuic {
@@ -56,18 +54,6 @@ impl AstralaneQuic {
         })
     }
 
-    // Sync version for convenience
-    pub async fn send_transaction(&self, tx: &Transaction) -> Result<Signature, String> {
-        let tx_bytes = bincode::serialize(tx).map_err(|e| format!("Failed to serialize transaction: {}", e))?;
-
-        self.client
-            .send_transaction(&tx_bytes)
-            .await
-            .map_err(|e| format!("Failed to send QUIC transaction: {}", e))?;
-
-        let sig = tx.signatures[0];
-        Ok(sig)
-    }
 }
 
 impl fmt::Display for AstralaneQuic {
@@ -77,27 +63,17 @@ impl fmt::Display for AstralaneQuic {
 }
 
 #[async_trait::async_trait]
-impl SendTxEncoded for AstralaneQuic {
-    async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
-        // Decode base64 to bytes
-        let tx_bytes = base64::prelude::BASE64_STANDARD
-            .decode(tx_base64)
-            .map_err(|e| format!("Failed to decode base64: {}", e))?;
+impl SendTx for AstralaneQuic {
+    async fn send_tx(&self, tx: &VersionedTransaction) -> Result<(), String> {
+        // 直接序列化为字节，QUIC 发送，无需 base64
+        let tx_bytes = bincode::serialize(tx).map_err(|e| format!("Failed to serialize transaction: {}", e))?;
 
-        // Send via QUIC
         self.client
             .send_transaction(&tx_bytes)
             .await
             .map_err(|e| format!("Astralane QUIC send error: {}", e))?;
 
-        // Try parsing as VersionedTransaction first (V0), fallback to Transaction (legacy)
-        let sig = if let Ok(v0tx) = bincode::deserialize::<solana_sdk::transaction::VersionedTransaction>(&tx_bytes) {
-            v0tx.signatures[0]
-        } else if let Ok(tx) = bincode::deserialize::<solana_sdk::transaction::Transaction>(&tx_bytes) {
-            tx.signatures[0]
-        } else {
-            return Err("Failed to deserialize transaction for signature".to_string());
-        };
+        let sig = tx.signatures[0];
         info!("[AstralaneQuic] Sent transaction signature: {}", sig);
 
         Ok(())

@@ -24,7 +24,6 @@ use crate::platform_clients::harmonic_proto::{
 use crate::platform_clients::PlatformName;
 
 use anyhow::{Context, anyhow};
-use base64::Engine;
 use log::{error, info};
 use prost_types::Timestamp;
 use solana_sdk::transaction::VersionedTransaction;
@@ -130,16 +129,10 @@ impl HarmonicBlockEngine {
 // ── trait 实现 ────────────────────────────────────────────────────────────────
 
 #[async_trait::async_trait]
-impl crate::platform_clients::SendTxEncoded for HarmonicBlockEngine {
-    /// 接收 base64 编码的交易，反序列化后通过 gRPC bundle 发送。
-    async fn send_tx_encoded(&self, tx_base64: &str) -> Result<(), String> {
-        let tx_bytes = base64::prelude::BASE64_STANDARD
-            .decode(tx_base64)
-            .map_err(|e| format!("base64 decode failed: {}", e))?;
-
-        // 验证反序列化（确保 tx_bytes 是合法的 VersionedTransaction）
-        let _ = bincode::deserialize::<VersionedTransaction>(&tx_bytes).map_err(|e| format!("deserialize tx failed: {}", e))?;
-
+impl crate::platform_clients::SendTx for HarmonicBlockEngine {
+    /// 直接序列化后通过 gRPC bundle 发送。
+    async fn send_tx(&self, tx: &VersionedTransaction) -> Result<(), String> {
+        let tx_bytes = bincode::serialize(tx).map_err(|e| format!("serialize tx failed: {}", e))?;
         self.send_bundle_bytes(tx_bytes).await
     }
 }
