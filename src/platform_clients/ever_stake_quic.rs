@@ -1,5 +1,5 @@
 use base64::Engine;
-use log::{debug, info, warn};
+use log::info;
 use quinn::crypto::rustls::QuicClientConfig;
 use quinn::{Connection, Endpoint};
 use rand::seq::IndexedRandom;
@@ -8,12 +8,12 @@ use solana_sdk::{signature::Keypair, transaction::Transaction};
 use solana_tls_utils::{SkipServerVerification, new_dummy_x509_certificate};
 use std::sync::Arc;
 use std::time::Duration;
-use std::{env, fmt};
+use std::fmt;
 use utils::log_time;
 
 use crate::constants::REGION;
 use crate::platform_clients::ever_stake::EVER_STAKE_TIP_ACCOUNTS;
-use crate::platform_clients::{BuildTx, BuildV0Tx, PlatformName, Region, SendTxEncoded, TxSend};
+use crate::platform_clients::{PlatformName, Region, SendTxEncoded};
 
 const ALPN_SWQOS_TX_PROTOCOL: &[&[u8]] = &[b"solana-tpu"];
 
@@ -26,7 +26,6 @@ pub struct EverStakeQuic {
 //Establish a connection to Everstake SWQoS Quic Endpoint
 impl EverStakeQuic {
     pub const MIN_TIP_AMOUNT_TX: u64 = 0_000_500_000; // 单笔交易最低 tip
-    pub const DEFAULT_TPS: u64 = 1;
     pub fn get_endpoint() -> String {
         match *REGION {
             Region::Frankfurt => "64.130.57.62:11809".to_string(),
@@ -51,16 +50,13 @@ impl EverStakeQuic {
         crypto.alpn_protocols = ALPN_SWQOS_TX_PROTOCOL.iter().map(|p| p.to_vec()).collect();
 
         let client_crypto =
-            QuicClientConfig::try_from(crypto).map_err(|err| "failed to convert rustls config into quinn crypto config")?;
+            QuicClientConfig::try_from(crypto).map_err(|_| "failed to convert rustls config into quinn crypto config")?;
         let mut client_config = quinn::ClientConfig::new(Arc::new(client_crypto));
         let mut transport_config = quinn::TransportConfig::default();
 
         // 设置保活间隔。例如每 10 秒发送一个 PING 帧
         // 如果不设置，默认为 None（不发送保活包）
         transport_config.keep_alive_interval(Some(Duration::from_secs(10)));
-
-        // (可选) 设置空闲超时时间，如果 30 秒内没有任何活动且没有保活包，则断开连接
-        // transport_config.max_idle_timeout(Some(Duration::from_secs(30).try_into().unwrap()));
 
         client_config.transport_config(Arc::new(transport_config)); // 将配置注入
 
@@ -197,45 +193,3 @@ impl fmt::Display for EverStakeQuic {
         write!(f, "EverStakeQuic")
     }
 }
-
-// #[tokio::test]
-// async fn test_everstake_quic() -> Result<()> {
-//     rustls::crypto::CryptoProvider::install_default(rustls::crypto::ring::default_provider())
-//         .unwrap();
-//     let everstake_keypair = Keypair::from_base58_string(
-//         "g6uc977Rk5ZF4jFP5J2PwKt3qRF59ncg2oZVFLq4erP7aUJJAUY7hfjrLWU7BtHLbGqncJHckjFrFeNkRFuQXHP",
-//     );
-//     let payer_key_pair =
-//         <Keypair as solana_sdk::signer::EncodableKey>::read_from_file("./test2.json").unwrap();
-//     let everstake_quic = EverStakeQuic::new(&everstake_keypair).await?;
-//     println!("Connected to Everstake SWQoS Quic Endpoint");
-
-//     {
-//         // 构造交易然后用send_transaction发送就行了
-//         let recent_blockhash = crate::constants::JSON_RPC_CLIENT
-//             .get_latest_blockhash()
-//             .await
-//             .context("failed to get recent blockhash")?;
-//         let hash = crate::platform_clients::HashParam::Blockhash(recent_blockhash);
-
-//         let tx = everstake_quic
-//             .build_v0_tx(
-//                 &[],
-//                 &Arc::new(payer_key_pair),
-//                 &None,
-//                 &hash,
-//                 &(None, None),
-//                 &[],
-//                 None,
-//             )
-//             .unwrap();
-//         tx.send()
-//             .await
-//             .map(|res| println!("Everstake Quic tx sent: {:?}", res))
-//             .unwrap();
-//     }
-//     tokio::time::sleep(Duration::from_secs(5)).await;
-//     println!("Test completed after waiting for 5 seconds.");
-
-//     Ok(())
-// }

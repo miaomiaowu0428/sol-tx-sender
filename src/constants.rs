@@ -1,15 +1,7 @@
 use crate::platform_clients::Region;
 use reqwest::Client;
-use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::pubkey;
-use solana_sdk::signature::Keypair;
-use solana_sdk::signer::Signer;
-use std::env;
 use std::sync::{Arc, LazyLock};
-
-pub mod api_config {
-    pub const BLOCKRAZOR_KEY: &str = "";
-}
 
 pub static HTTP_CLIENT: LazyLock<Arc<Client>> = LazyLock::new(|| {
     Arc::new(
@@ -18,10 +10,6 @@ pub static HTTP_CLIENT: LazyLock<Arc<Client>> = LazyLock::new(|| {
             .build()
             .expect("Failed to create HTTP client"),
     )
-});
-
-pub static JSON_RPC_CLIENT: LazyLock<RpcClient> = LazyLock::new(|| {
-    RpcClient::new(std::env::var("JSON_RPC_URL").unwrap_or_else(|_| "https://api.mainnet-beta.solana.com".to_string()))
 });
 
 pub static REGION: LazyLock<Region> = LazyLock::new(|| {

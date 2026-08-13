@@ -21,14 +21,14 @@ use crate::platform_clients::harmonic_proto::{
     searcher::{SendBundleRequest, searcher_service_client::SearcherServiceClient},
     shared::Header,
 };
-use crate::platform_clients::{PlatformName, Region};
+use crate::platform_clients::PlatformName;
 
 use anyhow::{Context, anyhow};
 use base64::Engine;
 use log::{error, info};
 use prost_types::Timestamp;
 use solana_sdk::transaction::VersionedTransaction;
-use solana_sdk::{pubkey, pubkey::Pubkey, signature::Keypair, signer::Signer};
+use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
 use std::fmt;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};

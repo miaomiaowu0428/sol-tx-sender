@@ -53,7 +53,6 @@ pub struct NextBlock {
 impl NextBlock {
     pub const MIN_TIP_AMOUNT_TX: u64 = 1_000_000; // NextBlock 单笔交易最低 tip（需要根据实际情况调整）
     pub const MIN_TIP_AMOUNT_BUNDLE: u64 = 1_000_000; // NextBlock 批量交易最低 tip
-    pub const DEFAULT_TPS: u64 = 5; // NextBlock 默认 TPS
 
     /// 根据区域获取对应的端点
     pub fn get_endpoint_for_region(region: Region) -> String {

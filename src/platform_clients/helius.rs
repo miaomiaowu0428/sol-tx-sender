@@ -50,8 +50,6 @@ pub struct Helius {
 
 impl Helius {
     pub const MIN_TIP_AMOUNT_TX: u64 = 0_001_000_000; // 单笔交易最低 tip  
-    pub const DEFAULT_TPS: u64 = 6;
-
     pub fn get_endpoint() -> String {
         match *REGION {
             Region::NewYork => HELIUS_ENDPOINT[0].to_string(),

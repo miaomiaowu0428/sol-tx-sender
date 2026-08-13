@@ -50,7 +50,6 @@ pub struct Temporal {
 impl Temporal {
     pub const MIN_TIP_AMOUNT_TX: u64 = 1_000_000; // 单笔交易最低 tip
     pub const MIN_TIP_AMOUNT_BUNDLE: u64 = 1_000_000; // 批量交易最低 tip
-    pub const DEFAULT_TPS: u64 = 1;
 
     pub fn get_endpoint() -> String {
         match *REGION {

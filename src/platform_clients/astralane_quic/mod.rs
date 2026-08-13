@@ -8,4 +8,4 @@ pub mod client;
 pub mod config;
 
 pub use client::AstralaneQuic;
-pub use config::{AstralaneQuicConfig, get_quic_endpoint, limits};
+pub use config::get_quic_endpoint;

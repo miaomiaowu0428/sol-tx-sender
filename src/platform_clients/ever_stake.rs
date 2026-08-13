@@ -39,7 +39,6 @@ pub struct EverStake {
 
 impl EverStake {
     pub const MIN_TIP_AMOUNT_TX: u64 = 0_000_500_000; // 单笔交易最低 tip
-    pub const DEFAULT_TPS: u64 = 5;
 
     pub fn endpoint_for(region: Region) -> &'static str {
         match region {

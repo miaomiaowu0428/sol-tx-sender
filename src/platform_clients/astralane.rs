@@ -59,7 +59,6 @@ pub struct Astralane {
 impl Astralane {
     pub const MIN_TIP_AMOUNT_TX: u64 = 0_000_010_000; // 单笔交易最低 tip
     pub const MIN_TIP_AMOUNT_BUNDLE: u64 = 0_000_100_000; // 批量交易最低 tip
-    pub const DEFAULT_TPS: u64 = 5;
 
     /// 根据 Region 返回对应的 endpoint URL（纯函数，不依赖全局状态）。
     pub fn endpoint_for(region: Region) -> &'static str {
@@ -179,9 +178,6 @@ impl crate::platform_clients::SendTxEncoded for Astralane {
                     { "mevProtect": true }
                 ],
             });
-            // println!("[astralane/send_tx] endpoint: {}", self.endpoint);
-            // println!("[astralane/send_tx] api-key(header): {}", self.auth_token);
-            // println!("[astralane/send_tx] request body: {}", req_json);
             let res = self
                 .http_client
                 .post(&self.endpoint)
@@ -190,17 +186,14 @@ impl crate::platform_clients::SendTxEncoded for Astralane {
                 .json(&req_json)
                 .send()
                 .await;
-            // println!("[astralane/send_tx] res: {res:?}");
             let response = match res {
                 Ok(resp) => match resp.text().await {
                     Ok(text) => text,
                     Err(e) => {
-                        // println!("[astralane/send_tx] response text error: {}", e);
                         return Err(format!("response text error: {}", e));
                     }
                 },
                 Err(e) => {
-                    // println!("[astralane/send_tx] send error: {}", e);
                     return Err(format!("send error: {}", e));
                 }
             };
@@ -255,7 +248,6 @@ impl crate::platform_clients::SendBundle for Astralane {
             Ok(resp) => match resp.text().await {
                 Ok(text) => text,
                 Err(e) => {
-                    // println!("[astralane/send_bundle] response text error: {}", e);
                     return Err(format!("response text error: {}", e));
                 }
             },

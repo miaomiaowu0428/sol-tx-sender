@@ -13,18 +13,16 @@ use std::sync::Arc;
 use crate::constants::REGION;
 use crate::platform_clients::astralane::ASTRALANE_TIP_ACCOUNTS;
 use crate::platform_clients::astralane_quic::get_quic_endpoint;
-use crate::platform_clients::{BuildTx, PlatformName, Region, SendTxEncoded};
+use crate::platform_clients::{PlatformName, Region, SendTxEncoded};
 
 #[derive(Clone)]
 pub struct AstralaneQuic {
     client: Arc<AstralaneQuicClient>,
     endpoint: String,
-    api_key: String,
 }
 
 impl AstralaneQuic {
     pub const MIN_TIP_AMOUNT_TX: u64 = 100_000; // 单笔交易最低 tip (100,000 lamports)
-    pub const DEFAULT_TPS: u64 = 5;
 
     pub fn get_endpoint() -> String {
         get_quic_endpoint(&REGION).to_string()
@@ -41,7 +39,6 @@ impl AstralaneQuic {
         Ok(Self {
             client: Arc::new(client),
             endpoint,
-            api_key,
         })
     }
 
@@ -56,7 +53,6 @@ impl AstralaneQuic {
         Ok(Self {
             client: Arc::new(client),
             endpoint,
-            api_key,
         })
     }
 

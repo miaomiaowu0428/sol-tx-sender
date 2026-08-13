@@ -43,7 +43,6 @@ pub struct Stellium {
 
 impl Stellium {
     pub const MIN_TIP_AMOUNT_TX: u64 = 1_000_000; // Stellium 单笔交易最低 tip
-    pub const DEFAULT_TPS: u64 = 10; // Stellium 默认 TPS
 
     /// 根据区域获取对应的端点
     pub fn get_endpoint_for_region(region: Region) -> String {

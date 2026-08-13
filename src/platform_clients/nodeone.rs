@@ -42,7 +42,6 @@ pub struct NodeOne {
 impl NodeOne {
     pub const MIN_TIP_AMOUNT_TX: u64 = 100_000; // 单笔交易最低 tip
     pub const MIN_TIP_AMOUNT_BUNDLE: u64 = 2_000_000; // 批量交易最低 tip
-    pub const DEFAULT_TPS: u64 = 5;
 
     pub fn get_endpoint() -> String {
         match *REGION {
