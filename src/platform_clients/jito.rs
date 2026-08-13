@@ -234,15 +234,6 @@ impl crate::platform_clients::BuildTx for Jito {
     // 使用默认实现，无需重写 build_tx
 }
 
-impl crate::platform_clients::BuildBundle for Jito {
-    fn build_bundle<'a>(&'a self, txs: &[SolTx]) -> crate::platform_clients::BundleEnvelope<'a, Jito> {
-        crate::platform_clients::BundleEnvelope {
-            txs: txs.to_vec(),
-            sender: self,
-        }
-    }
-}
-
 #[async_trait::async_trait]
 impl crate::platform_clients::BundleSender for Jito {
     fn tip_address(&self) -> Pubkey {

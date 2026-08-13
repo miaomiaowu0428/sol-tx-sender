@@ -21,10 +21,7 @@ pub static HTTP_CLIENT: LazyLock<Arc<Client>> = LazyLock::new(|| {
 });
 
 pub static JSON_RPC_CLIENT: LazyLock<RpcClient> = LazyLock::new(|| {
-    RpcClient::new(
-        std::env::var("JSON_RPC_URL")
-            .unwrap_or_else(|_| "https://api.mainnet-beta.solana.com".to_string()),
-    )
+    RpcClient::new(std::env::var("JSON_RPC_URL").unwrap_or_else(|_| "https://api.mainnet-beta.solana.com".to_string()))
 });
 
 pub static REGION: LazyLock<Region> = LazyLock::new(|| {

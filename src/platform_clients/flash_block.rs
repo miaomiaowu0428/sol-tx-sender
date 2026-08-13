@@ -259,15 +259,6 @@ impl crate::platform_clients::BuildTx for FlashBlock {
     // 使用默认实现，无需重写 build_tx
 }
 
-impl crate::platform_clients::BuildBundle for FlashBlock {
-    fn build_bundle<'a>(&'a self, txs: &[SolTx]) -> crate::platform_clients::BundleEnvelope<'a, FlashBlock> {
-        crate::platform_clients::BundleEnvelope {
-            txs: txs.to_vec(),
-            sender: self,
-        }
-    }
-}
-
 #[async_trait::async_trait]
 impl crate::platform_clients::BundleSender for FlashBlock {
     fn tip_address(&self) -> Pubkey {

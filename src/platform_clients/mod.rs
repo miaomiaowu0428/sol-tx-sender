@@ -257,14 +257,6 @@ pub trait BuildTx {
     }
 }
 
-// 批量交易组装 trait
-/// 批量交易组装 trait
-pub trait BuildBundle {
-    fn build_bundle<'a>(&'a self, txs: &[SolTx]) -> BundleEnvelope<'a, Self>
-    where
-        Self: SendBundle + Sync + Send + Sized;
-}
-
 // 单笔 envelope
 /// 单笔交易 envelope，兼容 Legacy/V0，包含 SolTx 和发送者
 pub struct TxEnvelope<'a, T: SendTxEncoded + Sync + Send + 'a> {
@@ -300,34 +292,6 @@ impl<'a, T: SendTxEncoded + Sync + Send + 'a> TxSend for TxEnvelope<'a, T> {
     }
     fn sig(&self) -> Signature {
         self.inner_tx().sig()
-    }
-}
-
-// 批量 envelope
-/// 批量交易 envelope，包含多笔交易和发送者
-pub struct BundleEnvelope<'a, T: SendBundle + Sync + Send + 'a> {
-    pub txs: Vec<SolTx>,
-    pub sender: &'a T,
-}
-
-impl<'a, T: SendBundle + Sync + Send + 'a> BundleEnvelope<'a, T> {
-    /// 获取所有交易的签名
-    pub fn sigs(&self) -> Vec<Signature> {
-        self.txs.iter().map(|tx| tx.sig()).collect()
-    }
-}
-
-/// 批量交易发送 trait
-#[async_trait::async_trait]
-pub trait BundleSend {
-    async fn send_bundle(&self) -> Result<Vec<Signature>, String>;
-}
-
-/// BundleEnvelope 的批量发送实现
-#[async_trait::async_trait]
-impl<'a, T: SendBundle + Sync + Send + 'a> BundleSend for BundleEnvelope<'a, T> {
-    async fn send_bundle(&self) -> Result<Vec<Signature>, String> {
-        self.sender.send_bundle(&self.txs).await
     }
 }
 

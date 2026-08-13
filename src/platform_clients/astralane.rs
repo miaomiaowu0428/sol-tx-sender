@@ -304,15 +304,3 @@ impl crate::platform_clients::BuildTx for Astralane {
 
     // 使用默认实现，无需重写 build_tx
 }
-
-impl crate::platform_clients::BuildBundle for Astralane {
-    fn build_bundle<'a>(
-        &'a self,
-        txs: &[crate::platform_clients::SolTx],
-    ) -> crate::platform_clients::BundleEnvelope<'a, Astralane> {
-        crate::platform_clients::BundleEnvelope {
-            txs: txs.to_vec(),
-            sender: self,
-        }
-    }
-}
