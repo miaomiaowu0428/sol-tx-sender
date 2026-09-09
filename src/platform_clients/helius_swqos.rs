@@ -1,7 +1,7 @@
 use std::fmt;
-impl fmt::Display for Helius {
+impl fmt::Display for HeliusSwqos {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Helius")
+        write!(f, "HeliusSwqos")
     }
 }
 use log::info;
@@ -12,13 +12,12 @@ use std::sync::Arc;
 use utils::log_time;
 
 use solana_sdk::{pubkey, pubkey::Pubkey};
-use solana_sdk::signature::Signature;
 
 use crate::constants::{HTTP_CLIENT, REGION};
 use crate::platform_clients::{PlatformName, Region, TxExt};
 use solana_sdk::transaction::VersionedTransaction;
 
-// helius 小费地址
+// helius (Sender SWQOS-only) 小费地址（与 Max 共用的 Sender tip account）
 pub const HELIUS_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("4ACfpUFoaSD9bfPdeu6DBt89gB6ENTeHBXCAi87NhDEE"),
     pubkey!("D2L6yPZ2FmmmTKPgzaMKdhu6EWZcTpLy1Vhx8uvZe7NZ"),
@@ -32,26 +31,31 @@ pub const HELIUS_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("4TQLFNWK8AovT1gFvda5jfw2oJeRMKEmw7aH6MGBJ3or"),
 ];
 
-// helius 地址
+// helius (Sender SWQOS-only) 地址 — 单条 SWQOS 路径，需带 swqos_only=true
 pub const HELIUS_ENDPOINT: &[&str] = &[
-    "http://ewr-sender.helius-rpc.com/fast", // NY
-    "http://ams-sender.helius-rpc.com/fast", // Amsterdam
-    "http://fra-sender.helius-rpc.com/fast", // Frankfurt
-    "http://lon-sender.helius-rpc.com/fast", // London
-    "http://slc-sender.helius-rpc.com/fast", // Salt Lake City
-    "http://tyo-sender.helius-rpc.com/fast", // Tokyo
-    "http://sg-sender.helius-rpc.com/fast",  // Singapore
+    "http://ewr-sender.helius-rpc.com/fast?swqos_only=true", // NY
+    "http://ams-sender.helius-rpc.com/fast?swqos_only=true", // Amsterdam
+    "http://fra-sender.helius-rpc.com/fast?swqos_only=true", // Frankfurt
+    "http://lon-sender.helius-rpc.com/fast?swqos_only=true", // London
+    "http://slc-sender.helius-rpc.com/fast?swqos_only=true", // Salt Lake City
+    "http://tyo-sender.helius-rpc.com/fast?swqos_only=true", // Tokyo
+    "http://sg-sender.helius-rpc.com/fast?swqos_only=true",  // Singapore
 ];
 
+/// Helius **Sender SWQOS-only** 平台。
+///
+/// 最低 tip 0.000005 SOL，只走单条 SWQOS 低成本路径，适用于大批量低成本交易。
+/// 端点为 `.../fast?swqos_only=true`。该档位**不支持 bundle**（仅单笔 `sendTransaction`），
+/// 因此只实现 `SendTx` / `BuildTx`，不实现 `SendBundle` / `BundleSender`。
 #[derive(Clone)]
-pub struct Helius {
+pub struct HeliusSwqos {
     pub endpoint: String,
     pub auth_token: String,
     pub http_client: Arc<Client>,
 }
 
-impl Helius {
-    pub const MIN_TIP_AMOUNT_TX: u64 = 0_001_000_000; // 单笔交易最低 tip  
+impl HeliusSwqos {
+    pub const MIN_TIP_AMOUNT_TX: u64 = 0_000_005_000; // 单笔交易最低 tip（SWQOS-only，0.000005 SOL）
     pub fn get_endpoint() -> String {
         match *REGION {
             Region::NewYork => HELIUS_ENDPOINT[0].to_string(),
@@ -79,7 +83,7 @@ impl Helius {
         };
         let auth_token = std::env::var("HELIUS_KEY").unwrap_or_default();
         let http_client = HTTP_CLIENT.clone();
-        Helius {
+        HeliusSwqos {
             endpoint,
             auth_token,
             http_client,
@@ -98,7 +102,7 @@ impl Helius {
             Region::Singapore => HELIUS_ENDPOINT[6].to_string(),
             _ => HELIUS_ENDPOINT[0].to_string(),
         };
-        Helius {
+        HeliusSwqos {
             endpoint,
             auth_token: key.into(),
             http_client: HTTP_CLIENT.clone(),
@@ -107,9 +111,9 @@ impl Helius {
 }
 
 #[async_trait::async_trait]
-impl crate::platform_clients::SendTx for Helius {
+impl crate::platform_clients::SendTx for HeliusSwqos {
     async fn send_tx(&self, tx: &VersionedTransaction) -> Result<(), String> {
-        log_time!("helius send: ", {
+        log_time!("helius(swqos) send: ", {
             let tx_base64 = tx.to_base64().map_err(|e| e.to_string())?;
             let res = self
                 .http_client
@@ -141,13 +145,13 @@ impl crate::platform_clients::SendTx for Helius {
                     return Err(format!("send error: {}", e));
                 }
             };
-            info!("helius: {}", response);
+            info!("helius(swqos): {}", response);
             Ok(())
         })
     }
 }
 
-impl crate::platform_clients::BuildTx for Helius {
+impl crate::platform_clients::BuildTx for HeliusSwqos {
     fn get_tip_address(&self) -> Pubkey {
         *HELIUS_TIP_ACCOUNTS
             .choose(&mut rand::rng())
@@ -155,7 +159,7 @@ impl crate::platform_clients::BuildTx for Helius {
             .unwrap()
     }
     fn platform(&self) -> PlatformName {
-        PlatformName::Helius
+        PlatformName::HeliusSwqos
     }
 
     fn get_min_tip_amount(&self) -> u64 {
@@ -164,77 +168,13 @@ impl crate::platform_clients::BuildTx for Helius {
     fn tip_recvs(&self) -> Vec<Pubkey> {
         HELIUS_TIP_ACCOUNTS.to_vec()
     }
+    // SWQOS-only 档位只走单条低成本路径、不做 cu_price 竞价：忽略任何 cu.price，不加 price 指令
+    fn uses_cu_price(&self) -> bool {
+        false
+    }
+    // SWQOS-only 单笔 tip 最高不超过 0.0002 SOL（200_000 lamports）
+    fn max_tip_amount(&self) -> Option<u64> {
+        Some(200_000)
+    }
     // 使用默认实现，无需重写 build_tx
-}
-
-#[async_trait::async_trait]
-impl crate::platform_clients::SendBundle for Helius {
-    /// Sender Max `sendBundle`：直接 POST 到 `/fast` 端点，最多 4 笔，base64 编码。
-    ///
-    /// 按官方要求：至少一笔交易需带 ≥0.001 SOL 的 Sender tip，每笔需带 priority fee
-    /// （由 `BundleBuilder::append` 的 tip / cu 参数控制）。追踪按交易签名，不用 bundle id。
-    async fn send_bundle(&self, txs: &[VersionedTransaction]) -> Result<Vec<Signature>, String> {
-        if txs.is_empty() || txs.len() > 4 {
-            return Err(format!("Helius sendBundle requires 1-4 transactions, got {}", txs.len()));
-        }
-        log_time!("helius sendBundle: ", {
-            let mut encoded_txs = Vec::with_capacity(txs.len());
-            let mut sigs: Vec<Signature> = Vec::with_capacity(txs.len());
-            for tx in txs {
-                let tx_base64 = tx.to_base64().map_err(|e| e.to_string())?;
-                encoded_txs.push(tx_base64);
-                sigs.push(tx.sig());
-            }
-            let res = self
-                .http_client
-                .post(&self.endpoint)
-                .header("Content-Type", "application/json")
-                .header("api-key", self.auth_token.as_str())
-                .json(&json!({
-                    "id": 1,
-                    "jsonrpc": "2.0",
-                    "method": "sendBundle",
-                    "params": [
-                        encoded_txs,
-                        { "encoding": "base64" }
-                    ],
-                }))
-                .send()
-                .await;
-            let response = match res {
-                Ok(resp) => match resp.text().await {
-                    Ok(text) => text,
-                    Err(e) => return Err(format!("response text error: {}", e)),
-                },
-                Err(e) => {
-                    log::error!("helius sendBundle send error: {:?}", e);
-                    return Err(format!("send error: {}", e));
-                }
-            };
-            info!("helius sendBundle: {}", response);
-            // 响应含 error 字段（如 tip 不足被拒）时视为失败
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&response) {
-                if let Some(err) = v.get("error") {
-                    return Err(format!("helius sendBundle error: {}", err));
-                }
-            }
-            Ok(sigs)
-        })
-    }
-}
-
-#[async_trait::async_trait]
-impl crate::platform_clients::BundleSender for Helius {
-    fn tip_address(&self) -> Pubkey {
-        *HELIUS_TIP_ACCOUNTS
-            .choose(&mut rand::rng())
-            .or_else(|| HELIUS_TIP_ACCOUNTS.first())
-            .unwrap()
-    }
-    fn max_tx_size(&self) -> usize {
-        1500
-    }
-    async fn send_bundle(&self, txs: &[VersionedTransaction]) -> Result<Vec<Signature>, String> {
-        <Self as crate::platform_clients::SendBundle>::send_bundle(self, txs).await
-    }
 }

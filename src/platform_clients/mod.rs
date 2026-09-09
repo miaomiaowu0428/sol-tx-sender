@@ -25,7 +25,8 @@ pub mod ever_stake_quic;
 pub mod flash_block;
 pub mod harmonic;
 pub mod harmonic_proto;
-pub mod helius;
+pub mod helius_max;
+pub mod helius_swqos;
 pub mod jito;
 pub mod nextblock;
 pub mod nodeone;
@@ -56,7 +57,8 @@ impl TxExt for VersionedTransaction {
 pub enum PlatformName {
     Astralane,
     Blockrazor,
-    Helius,
+    HeliusMax,
+    HeliusSwqos,
     Harmonic,
     Jito,
     Nodeone,
@@ -74,7 +76,8 @@ impl std::fmt::Display for PlatformName {
         let name = match self {
             PlatformName::Astralane => "Astralane",
             PlatformName::Blockrazor => "Blockrazor",
-            PlatformName::Helius => "Helius",
+            PlatformName::HeliusMax => "HeliusMax",
+            PlatformName::HeliusSwqos => "HeliusSwqos",
             PlatformName::Harmonic => "HarmonicBlockEngine",
             PlatformName::Jito => "Jito",
             PlatformName::Nodeone => "Nodeone",
@@ -145,6 +148,22 @@ pub trait BuildTx {
     /// 调用方传入任何 tip 值均被静默忽略。
     fn uses_tip_transfer(&self) -> bool {
         true
+    }
+
+    /// 是否写入 `setComputeUnitPrice`(cu_price) 指令。默认 `true`。
+    ///
+    /// 返回 `false` 的平台（如 HeliusMax / HeliusSwqos，走纯 tip 缓冲、不做 cu_price
+    /// 竞价）会忽略调用方传入的任何 cu.price，不生成 price 指令；cu_limit(units) 仍照常写入。
+    fn uses_cu_price(&self) -> bool {
+        true
+    }
+
+    /// 单笔 tip 上限（lamports）。默认 `None` 表示不设上限。
+    ///
+    /// 返回 `Some(cap)` 的平台会把解析出的 tip 钳到 `cap` 以内（如 HeliusSwqos 上限
+    /// 0.0002 SOL），`None` 的平台（如 HeliusMax）保持全额 tip 不限顶。
+    fn max_tip_amount(&self) -> Option<u64> {
+        None
     }
 }
 
@@ -228,7 +247,8 @@ pub async fn endpoint_keep_alive() {
     let urls = vec![
         astralane::Astralane::get_endpoint(),
         blockrazor::Blockrazor::get_endpoint(),
-        helius::Helius::get_endpoint(),
+        helius_max::HeliusMax::get_endpoint(),
+        helius_swqos::HeliusSwqos::get_endpoint(),
         jito::Jito::get_endpoint(),
         nodeone::NodeOne::get_endpoint(),
         temporal::Temporal::get_endpoint(),
@@ -293,9 +313,12 @@ pub trait BuildV0Tx {
                 let limit_instruction = ComputeBudgetInstruction::set_compute_unit_limit(cu_limit);
                 instructions.push(limit_instruction);
             }
-            if let Some(cu_price) = cu.1 {
-                let price_instruction = ComputeBudgetInstruction::set_compute_unit_price(cu_price);
-                instructions.push(price_instruction);
+            // 平台（如 HeliusMax / HeliusSwqos）可覆写为 false，忽略 cu.price、不加 price 指令
+            if self.uses_cu_price() {
+                if let Some(cu_price) = cu.1 {
+                    let price_instruction = ComputeBudgetInstruction::set_compute_unit_price(cu_price);
+                    instructions.push(price_instruction);
+                }
             }
 
             if self.uses_tip_transfer() {
@@ -303,7 +326,11 @@ pub trait BuildV0Tx {
                     // tip = Some(0) → 不添加 tip 指令
                 } else {
                     let tip_address = self.get_tip_address();
-                    let tip_amt = tip.unwrap_or(self.get_min_tip_amount());
+                    let mut tip_amt = tip.unwrap_or(self.get_min_tip_amount());
+                    // 平台 tip 上限（如 HeliusSwqos cap 0.0002 SOL）；None 不限顶
+                    if let Some(cap) = self.max_tip_amount() {
+                        tip_amt = tip_amt.min(cap);
+                    }
                     if tip_amt > 0 {
                         info!(
                             "Build V0Tx with tip: {}({tip_amt}lamports) at {} tip address: {}",
@@ -375,13 +402,20 @@ pub trait BuildV0Tx {
             if let Some(cu_limit) = cu.0 {
                 instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(cu_limit));
             }
-            if let Some(cu_price) = cu.1 {
-                instructions.push(ComputeBudgetInstruction::set_compute_unit_price(cu_price));
+            // 平台（如 HeliusMax / HeliusSwqos）可覆写为 false，忽略 cu.price、不加 price 指令
+            if self.uses_cu_price() {
+                if let Some(cu_price) = cu.1 {
+                    instructions.push(ComputeBudgetInstruction::set_compute_unit_price(cu_price));
+                }
             }
             if self.uses_tip_transfer() {
                 if tip != &Some(0) {
                     let tip_address = self.get_tip_address();
-                    let tip_amt = tip.unwrap_or(self.get_min_tip_amount());
+                    let mut tip_amt = tip.unwrap_or(self.get_min_tip_amount());
+                    // 平台 tip 上限（如 HeliusSwqos cap 0.0002 SOL）；None 不限顶
+                    if let Some(cap) = self.max_tip_amount() {
+                        tip_amt = tip_amt.min(cap);
+                    }
                     if tip_amt > 0 {
                         instructions.push(transfer(&payer, &tip_address, tip_amt));
                     }
@@ -419,7 +453,8 @@ pub trait BuildV0Tx {
 impl BuildV0Tx for astralane::Astralane {}
 impl BuildV0Tx for astralane_quic::client::AstralaneQuic {}
 impl BuildV0Tx for blockrazor::Blockrazor {}
-impl BuildV0Tx for helius::Helius {}
+impl BuildV0Tx for helius_max::HeliusMax {}
+impl BuildV0Tx for helius_swqos::HeliusSwqos {}
 impl BuildV0Tx for harmonic::HarmonicBlockEngine {}
 impl BuildV0Tx for jito::Jito {}
 impl BuildV0Tx for nodeone::NodeOne {}
@@ -463,6 +498,15 @@ pub trait BundleSender: Send + Sync {
     fn tip_address(&self) -> Pubkey;
     /// 单笔交易最大字节数（取决于传输格式：base64 / binary）
     fn max_tx_size(&self) -> usize;
+    /// 是否写入 `setComputeUnitPrice`(cu_price) 指令。默认 `true`。
+    /// 返回 `false`（如 HeliusMax）的 bundle 忽略调用方传入的 cu.price。
+    fn uses_cu_price(&self) -> bool {
+        true
+    }
+    /// 该平台单笔 tip 上限（lamports）。默认 `None` 表示不设上限。
+    fn max_tip_amount(&self) -> Option<u64> {
+        None
+    }
 }
 
 /// Bundle append 失败时携带 builder，不丢已添加的交易
@@ -535,14 +579,21 @@ impl BundleBuilder {
         if let Some(cu_limit) = cu.0 {
             instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(cu_limit));
         }
-        if let Some(cu_price) = cu.1 {
-            instructions.push(ComputeBudgetInstruction::set_compute_unit_price(cu_price));
+        // 平台（如 HeliusMax）可覆写为 false，忽略 cu.price、不加 price 指令
+        if self.sender.uses_cu_price() {
+            if let Some(cu_price) = cu.1 {
+                instructions.push(ComputeBudgetInstruction::set_compute_unit_price(cu_price));
+            }
         }
 
-        // tip：由调用方显式传入
+        // tip：由调用方显式传入（按平台 cap 收窄）
         if let Some(tip_amt) = tip {
-            if *tip_amt > 0 {
-                instructions.push(transfer(&payer, &self.sender.tip_address(), *tip_amt));
+            let mut tip_amt = *tip_amt;
+            if let Some(cap) = self.sender.max_tip_amount() {
+                tip_amt = tip_amt.min(cap);
+            }
+            if tip_amt > 0 {
+                instructions.push(transfer(&payer, &self.sender.tip_address(), tip_amt));
             }
         }
 
