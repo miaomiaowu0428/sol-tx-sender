@@ -466,6 +466,251 @@ impl BuildV0Tx for stellium::Stellium {}
 impl BuildV0Tx for ever_stake::EverStake {}
 impl BuildV0Tx for ever_stake_quic::EverStakeQuic {}
 
+/// V1 交易组装（SIMD-0385 / SIMD-0296）。
+///
+/// # 与 V0 的差异
+///
+/// | 维度 | V0 (`BuildV0Tx`) | V1（本 trait） |
+/// |---|---|---|
+/// | 大小上限 | 1232 字节 | **4096 字节** |
+/// | 地址查找表 | 支持（`address_lookup_tables`） | **不支持**，账户必须内联 |
+/// | compute budget | 写成 `ComputeBudgetProgram` 指令 | **写进消息 `config`** |
+/// | 账户上限 | 64（经 ALT 可达） | 64（内联即可达到） |
+///
+/// # 参数说明
+///
+/// - `config`：交易级资源限制。**取代了 V0 的 `cu` 参数**——V1 不再需要
+///   构造 `SetComputeUnitLimit` / `SetComputeUnitPrice` 指令，这两个值
+///   直接写进消息的 `config` 字段，网络只需定长读取即可排序。
+/// - 没有 `address_lookup_tables`：V1 不支持 ALT，所以账户全部内联。
+///   这也是 V1 能用 4096 字节装下 64 个账户的原因（64 × 32 = 2048 字节）。
+///
+/// # 注意
+///
+/// `config` 里的 `None` 语义是**取 0**（不是"无限制"）——这是 V1 与 V0 的
+/// 重要差异。V0 不写 ComputeBudget 指令表示"用运行时默认值"，而 V1 的
+/// `None` 表示按 0 处理。所以调用方需要显式给出想要的值。
+pub trait BuildV1Tx {
+    /// 单签名者：用 `v1::Message::try_compile_with_config` 组装并签名。
+    ///
+    /// `config` 取代了 V0 的 `cu` 参数；不再有 `address_lookup_tables`。
+    fn build_v1_tx<'a>(
+        &'a self,
+        ixs: &[Instruction],
+        signer: &Arc<Keypair>,
+        tip: &Option<u64>,
+        nonce: &HashParam,
+        config: V1TxConfig,
+        memo: Option<Vec<&str>>,
+    ) -> Result<TxEnvelope<'a, Self>, Box<dyn std::error::Error + Send + Sync>>
+    where
+        Self: Sync + Send + Sized + Display + SendTx + BuildTx,
+    {
+        use solana_sdk::message::v1::Message as V1Message;
+        use solana_sdk::message::VersionedMessage;
+        log_time!("build V1 transaction", {
+            let hash = *nonce.hash();
+            let payer = signer.pubkey();
+            let mut instructions = Vec::new();
+
+            // nonce advance 仍是普通指令（V1 只把 compute budget 搬进了 config）。
+            if let HashParam::NonceAccount { account, authority, .. } = nonce {
+                instructions.push(advance_nonce_account(account, authority));
+            }
+
+            // 注意：这里**不再**添加 ComputeBudget 指令 —— cu limit / price
+            // 通过 `config` 传给消息本身。
+
+            if self.uses_tip_transfer() {
+                if let Some(0) = tip {
+                    // tip = Some(0) → 不添加 tip 指令
+                } else {
+                    let tip_address = self.get_tip_address();
+                    let mut tip_amt = tip.unwrap_or(self.get_min_tip_amount());
+                    if let Some(cap) = self.max_tip_amount() {
+                        tip_amt = tip_amt.min(cap);
+                    }
+                    if tip_amt > 0 {
+                        info!(
+                            "Build V1Tx with tip: {}({tip_amt}lamports) at {} tip address: {}",
+                            tip_amt as f64 / 1_000_000_000.0,
+                            self,
+                            tip_address
+                        );
+                        instructions.push(transfer(&payer, &tip_address, tip_amt));
+                    }
+                }
+            }
+
+            if let Some(memo_str) = memo {
+                let memo_concat = memo_str.join("-");
+                instructions.push(solana_sdk::instruction::Instruction {
+                    program_id: *crate::constants::MEMO_PROGRAM,
+                    accounts: vec![],
+                    data: memo_concat.as_bytes().to_vec(),
+                });
+            }
+
+            // 用户指令
+            instructions.extend(ixs.iter().cloned());
+
+            let message =
+                V1Message::try_compile_with_config(&payer, &instructions, hash, config.to_transaction_config())?;
+            let transaction =
+                VersionedTransaction::try_new(VersionedMessage::V1(message), &[signer.as_ref()])?;
+            let sig = transaction.signatures[0];
+            info!("  sig: {}", sig);
+            Ok(TxEnvelope {
+                tx: DetailedTx {
+                    tx: transaction,
+                    platform: self.platform(),
+                    tip: *tip,
+                    cu_limit: config.compute_unit_limit,
+                    cu_price: config.priority_fee,
+                },
+                sender: self,
+            })
+        })
+    }
+
+    /// 多签：`signers` 中第一个是 fee payer，其余为额外签名者。
+    ///
+    /// 与单签版唯一区别是签名者列表；config 语义完全一致。
+    fn build_multisig_v1_tx<'a>(
+        &'a self,
+        ixs: &[Instruction],
+        signers: &[&Keypair],
+        tip: &Option<u64>,
+        nonce: &HashParam,
+        config: V1TxConfig,
+        memo: Option<Vec<&str>>,
+    ) -> Result<TxEnvelope<'a, Self>, Box<dyn std::error::Error + Send + Sync>>
+    where
+        Self: Sync + Send + Sized + Display + SendTx + BuildTx,
+    {
+        use solana_sdk::message::v1::Message as V1Message;
+        use solana_sdk::message::VersionedMessage;
+        log_time!("build multisig V1 transaction", {
+            if signers.is_empty() {
+                return Err("build_multisig_v1_tx: signers is empty".into());
+            }
+            let hash = *nonce.hash();
+            let payer = signers[0].pubkey();
+            let mut instructions = Vec::new();
+
+            if let HashParam::NonceAccount { account, authority, .. } = nonce {
+                instructions.push(advance_nonce_account(account, authority));
+            }
+
+            if self.uses_tip_transfer() {
+                if tip != &Some(0) {
+                    let tip_address = self.get_tip_address();
+                    let mut tip_amt = tip.unwrap_or(self.get_min_tip_amount());
+                    if let Some(cap) = self.max_tip_amount() {
+                        tip_amt = tip_amt.min(cap);
+                    }
+                    if tip_amt > 0 {
+                        instructions.push(transfer(&payer, &tip_address, tip_amt));
+                    }
+                }
+            }
+
+            if let Some(memo_str) = memo {
+                let memo_concat = memo_str.join("-");
+                instructions.push(solana_sdk::instruction::Instruction {
+                    program_id: *crate::constants::MEMO_PROGRAM,
+                    accounts: vec![],
+                    data: memo_concat.as_bytes().to_vec(),
+                });
+            }
+            instructions.extend(ixs.iter().cloned());
+
+            let message =
+                V1Message::try_compile_with_config(&payer, &instructions, hash, config.to_transaction_config())?;
+            let transaction = VersionedTransaction::try_new(VersionedMessage::V1(message), signers)?;
+            let sig = transaction.signatures[0];
+            info!("  sig: {}", sig);
+            Ok(TxEnvelope {
+                tx: DetailedTx {
+                    tx: transaction,
+                    platform: self.platform(),
+                    tip: *tip,
+                    cu_limit: config.compute_unit_limit,
+                    cu_price: config.priority_fee,
+                },
+                sender: self,
+            })
+        })
+    }
+}
+
+/// V1 交易级配置（`BuildV1Tx` 的入参）。
+///
+/// 对应消息里的 `v1::TransactionConfig`，但用 `Option` 表达"未设置"，
+/// 与 V0 的 `cu: (Option<u32>, Option<u64>)` 习惯保持一致。
+///
+/// # 默认值语义（与 V0 不同，务必注意）
+///
+/// | 字段 | 未设置时的链上行为 |
+/// |---|---|
+/// | `compute_unit_limit` | **取 0**（不是"无限制"） |
+/// | `priority_fee` | **取 0**（不额外付费） |
+/// | `loaded_accounts_data_size_limit` | **取 0** |
+/// | `heap_size` | 32 KB |
+#[derive(Debug, Clone, Copy, Default)]
+pub struct V1TxConfig {
+    /// 优先费，单位 **lamports**（不是 micro-lamports 单价）。
+    pub priority_fee: Option<u64>,
+    /// 最大 compute unit。
+    pub compute_unit_limit: Option<u32>,
+    /// 最大可加载账户数据字节数。
+    pub loaded_accounts_data_size_limit: Option<u32>,
+    /// 堆大小（字节），必须是 1024 的倍数。
+    pub heap_size: Option<u32>,
+}
+
+impl V1TxConfig {
+    /// 转成消息用的 `TransactionConfig`。
+    pub fn to_transaction_config(self) -> solana_sdk::message::v1::TransactionConfig {
+        solana_sdk::message::v1::TransactionConfig {
+            priority_fee: self.priority_fee,
+            compute_unit_limit: self.compute_unit_limit,
+            loaded_accounts_data_size_limit: self.loaded_accounts_data_size_limit,
+            heap_size: self.heap_size,
+        }
+    }
+
+    /// 从 `(cu_limit, cu_price)` 构造 —— 便于 V0 调用点平滑迁移。
+    ///
+    /// ⚠️ 单位不同：V0 的 `cu_price` 是 **micro-lamports 单价**，
+    /// V1 的 `priority_fee` 是 **lamports 总额**。这里直接赋值，**不做换算**，
+    /// 调用方需自行确认语义。
+    pub fn from_cu(cu_limit: Option<u32>, cu_price: Option<u64>) -> Self {
+        Self {
+            compute_unit_limit: cu_limit,
+            priority_fee: cu_price,
+            ..Default::default()
+        }
+    }
+}
+
+// 各平台 BuildV1Tx 实现（与 BuildV0Tx 一一对应）
+impl BuildV1Tx for astralane::Astralane {}
+impl BuildV1Tx for astralane_quic::client::AstralaneQuic {}
+impl BuildV1Tx for blockrazor::Blockrazor {}
+impl BuildV1Tx for helius_max::HeliusMax {}
+impl BuildV1Tx for helius_swqos::HeliusSwqos {}
+impl BuildV1Tx for harmonic::HarmonicBlockEngine {}
+impl BuildV1Tx for jito::Jito {}
+impl BuildV1Tx for nodeone::NodeOne {}
+impl BuildV1Tx for temporal::Temporal {}
+impl BuildV1Tx for zeroslot::ZeroSlot {}
+impl BuildV1Tx for flash_block::FlashBlock {}
+impl BuildV1Tx for nextblock::NextBlock {}
+impl BuildV1Tx for stellium::Stellium {}
+impl BuildV1Tx for ever_stake::EverStake {}
+impl BuildV1Tx for ever_stake_quic::EverStakeQuic {}
+
 #[test]
 fn test_region() {
     let regions = &[
@@ -484,6 +729,112 @@ fn test_region() {
     for region in regions {
         println!("{}, {:?}", region, Region::from(region));
     }
+}
+
+/// 验证 V1 交易组装：config 正确落到消息里，且不再有 ComputeBudget 指令。
+#[test]
+fn test_build_v1_tx_uses_config_not_compute_budget_ix() {
+    use crate::platform_clients::ever_stake::EverStake;
+    use solana_sdk::hash::Hash;
+    use solana_sdk::instruction::Instruction;
+    use solana_sdk::pubkey::Pubkey;
+    use solana_sdk::signature::Keypair;
+
+    let sender = EverStake::new();
+    let signer = std::sync::Arc::new(Keypair::new());
+    let nonce = HashParam::Blockhash(Hash::new_from_array([9u8; 32]));
+
+    // 一条用户指令（System transfer）
+    let ix = solana_system_interface::instruction::transfer(
+        &signer.pubkey(),
+        &Pubkey::new_unique(),
+        1,
+    );
+
+    let config = V1TxConfig {
+        compute_unit_limit: Some(200_000),
+        priority_fee: Some(5_000),
+        loaded_accounts_data_size_limit: Some(65_536),
+        heap_size: Some(32_768),
+    };
+
+    let envelope = sender
+        .build_v1_tx(&[ix], &signer, &None, &nonce, config, None)
+        .expect("V1 构建应成功");
+
+    // 1. 必须是 V1 消息
+    match &envelope.tx.tx.message {
+        solana_sdk::message::VersionedMessage::V1(m) => {
+            // 2. config 必须原样落到消息里
+            assert_eq!(m.config.compute_unit_limit, Some(200_000));
+            assert_eq!(m.config.priority_fee, Some(5_000));
+            assert_eq!(m.config.loaded_accounts_data_size_limit, Some(65_536));
+            assert_eq!(m.config.heap_size, Some(32_768));
+
+            // 3. 指令里**不应**出现 ComputeBudgetProgram
+            //    （V1 的 CU 在 config 里，不是指令）
+            let has_cb_ix = m.instructions.iter().any(|ci| {
+                m.account_keys
+                    .get(ci.program_id_index as usize)
+                    .map(|k| *k == const_accounts::COMPUTE_BUDGET_PROGRAM)
+                    .unwrap_or(false)
+            });
+            assert!(!has_cb_ix, "V1 交易不应包含 ComputeBudgetProgram 指令");
+        }
+        other => panic!("期望 V1 消息，实际是 {other:?}"),
+    }
+
+    // 4. DetailedTx 里的 cu 值应来自 config
+    assert_eq!(envelope.tx.cu_limit, Some(200_000));
+    assert_eq!(envelope.tx.cu_price, Some(5_000));
+
+    // 5. 签名存在
+    assert_eq!(envelope.tx.tx.signatures.len(), 1);
+}
+
+/// 验证 V1 能装下超过 1232 字节的交易（V0 会失败）。
+#[test]
+fn test_v1_accepts_larger_than_v0_limit() {
+    use crate::platform_clients::ever_stake::EverStake;
+    use solana_sdk::hash::Hash;
+    use solana_sdk::instruction::Instruction;
+    use solana_sdk::pubkey::Pubkey;
+    use solana_sdk::signature::Keypair;
+    use solana_sdk::instruction::AccountMeta;
+
+    let sender = EverStake::new();
+    let signer = std::sync::Arc::new(Keypair::new());
+    let nonce = HashParam::Blockhash(Hash::new_from_array([3u8; 32]));
+
+    // 构造一条 data 很大的指令（> 1232 字节）
+    let big_ix = Instruction {
+        program_id: Pubkey::new_unique(),
+        accounts: vec![AccountMeta::new(Pubkey::new_unique(), false)],
+        data: vec![0xAB; 3000],
+    };
+
+    let envelope = sender
+        .build_v1_tx(
+            &[big_ix],
+            &signer,
+            &None,
+            &nonce,
+            V1TxConfig {
+                compute_unit_limit: Some(1_000_000),
+                ..Default::default()
+            },
+            None,
+        )
+        .expect("V1 应能容纳超过 1232 字节的交易");
+
+    // 序列化后应超过旧的 1232 上限
+    let bytes = bincode::serialize(&envelope.tx.tx).unwrap();
+    assert!(
+        bytes.len() > 1232,
+        "该交易应超过 V0 上限，实际 {} 字节",
+        bytes.len()
+    );
+    assert!(bytes.len() <= 4096, "不应超过 V1 上限，实际 {} 字节", bytes.len());
 }
 
 // ============================================================

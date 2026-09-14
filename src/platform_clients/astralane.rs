@@ -113,7 +113,8 @@ impl crate::platform_clients::BundleSender for Astralane {
     }
 
     fn max_tx_size(&self) -> usize {
-        1232
+        // V1 交易上限 4096 字节（SIMD-0296）。V0 交易实际不会超过此值。
+        4096
     }
 
     async fn send_bundle(&self, txs: &[VersionedTransaction]) -> Result<Vec<Signature>, String> {
