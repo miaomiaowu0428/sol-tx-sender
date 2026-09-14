@@ -679,19 +679,6 @@ impl V1TxConfig {
             heap_size: self.heap_size,
         }
     }
-
-    /// 从 `(cu_limit, cu_price)` 构造 —— 便于 V0 调用点平滑迁移。
-    ///
-    /// ⚠️ 单位不同：V0 的 `cu_price` 是 **micro-lamports 单价**，
-    /// V1 的 `priority_fee` 是 **lamports 总额**。这里直接赋值，**不做换算**，
-    /// 调用方需自行确认语义。
-    pub fn from_cu(cu_limit: Option<u32>, cu_price: Option<u64>) -> Self {
-        Self {
-            compute_unit_limit: cu_limit,
-            priority_fee: cu_price,
-            ..Default::default()
-        }
-    }
 }
 
 // 各平台 BuildV1Tx 实现（与 BuildV0Tx 一一对应）
