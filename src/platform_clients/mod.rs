@@ -649,15 +649,32 @@ pub trait BuildV1Tx {
 /// 对应消息里的 `v1::TransactionConfig`，但用 `Option` 表达"未设置"，
 /// 与 V0 的 `cu: (Option<u32>, Option<u64>)` 习惯保持一致。
 ///
-/// # 默认值语义（与 V0 不同，务必注意）
+/// # ⚠️ 链上默认值语义（与 V0 完全不同）
 ///
-/// | 字段 | 未设置时的链上行为 |
-/// |---|---|
-/// | `compute_unit_limit` | **取 0**（不是"无限制"） |
-/// | `priority_fee` | **取 0**（不额外付费） |
-/// | `loaded_accounts_data_size_limit` | **取 0** |
-/// | `heap_size` | 32 KB |
-#[derive(Debug, Clone, Copy, Default)]
+/// V1 的 config **不走 ComputeBudget 指令**，而是直接写在消息头里。
+/// 任何一个字段传 `None`（= 未设置）时，**链上取 0 而不是走默认值**：
+///
+/// | 字段 | 传 `None` 时的链上行为 | Legacy/V0 的默认 |
+/// |---|---|---|
+/// | `compute_unit_limit` | **取 0** —— 交易直接失败 | 1,400,000 |
+/// | `priority_fee` | **取 0**（不额外付费） | 0 |
+/// | `loaded_accounts_data_size_limit` | **取 0** | 64 MiB |
+/// | `heap_size` | 32 KB | 32 KB |
+///
+/// 所以 `compute_unit_limit` / `loaded_accounts_data_size_limit` 一旦不填，
+/// 交易就执行不了。
+///
+/// # [`Default`] 的取值（本 crate 选的实用值，非链上默认）
+///
+/// | 字段 | 默认 | 说明 |
+/// |---|---|---|
+/// | `compute_unit_limit` | **500,000** | 够绝大多数 swap（含两跳）；比 Legacy 的 1.4M 省费，比单指令的 200k 宽裕 |
+/// | `priority_fee` | `None` | 不参与竞价（多数平台自己会带 tip） |
+/// | `loaded_accounts_data_size_limit` | **64 MiB** | 对齐 Legacy/V0 链上默认 |
+/// | `heap_size` | `None` | 链上默认 32 KB |
+///
+/// 用法：`V1TxConfig { compute_unit_limit: Some(x), ..Default::default() }`
+#[derive(Debug, Clone, Copy)]
 pub struct V1TxConfig {
     /// 优先费，单位 **lamports**（不是 micro-lamports 单价）。
     pub priority_fee: Option<u64>,
@@ -667,6 +684,29 @@ pub struct V1TxConfig {
     pub loaded_accounts_data_size_limit: Option<u32>,
     /// 堆大小（字节），必须是 1024 的倍数。
     pub heap_size: Option<u32>,
+}
+
+impl V1TxConfig {
+    /// V1 交易默认的 CU 上限：**500,000**。
+    ///
+    /// 取舍：Legacy/V0 未设置时链上给 1,400,000（按上限计优先费会偏贵），
+    /// 单指令默认 200,000（两跳/多指令交易会不够）。500k 覆盖常见 swap，
+    /// 又不至于为用不到的余量付费。
+    pub const DEFAULT_COMPUTE_UNIT_LIMIT: u32 = 500_000;
+
+    /// V1 交易默认的账户数据上限：**64 MiB**（对齐 Legacy/V0 链上默认）。
+    pub const DEFAULT_LOADED_ACCOUNTS_DATA_SIZE_LIMIT: u32 = 64 * 1024 * 1024;
+}
+
+impl Default for V1TxConfig {
+    fn default() -> Self {
+        Self {
+            compute_unit_limit: Some(Self::DEFAULT_COMPUTE_UNIT_LIMIT),
+            priority_fee: None,
+            loaded_accounts_data_size_limit: Some(Self::DEFAULT_LOADED_ACCOUNTS_DATA_SIZE_LIMIT),
+            heap_size: None,
+        }
+    }
 }
 
 impl V1TxConfig {
