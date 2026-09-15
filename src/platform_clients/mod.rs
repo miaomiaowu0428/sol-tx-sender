@@ -1039,3 +1039,159 @@ impl BundleBuilder {
         self.sender.send_bundle(&self.txs).await
     }
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// V1 版 bundle 构建器
+//
+// # 为什么需要它（V1 并没有取消 bundle 的价值）
+//
+// V1 只提高了**账户数**（64 个 inline，无需 ALT）和**字节数**（4096），
+// **没有**提高单笔的指令数上限 —— 一笔交易能承载的账户总数依然是 64。
+// 所以「migrate + sell」这类指令条数多、账户去重后仍超 64 的场景，
+// 还是得拆成多笔 bundle，只是每笔内部换成 V1 编码。
+//
+// # 与 [`BundleBuilder`]（V0 版）的差异
+//
+// | | V0 版 | 本类型 |
+// |---|---|---|
+// | 计费参数 | `cu: &(Option<u32>, Option<u64>)` | `config: V1TxConfig` |
+// | ALT | `address_lookup_tables` 参数 | **无**（V1 不支持查找表） |
+// | 消息编译 | `V0Message::try_compile` | `V1Message::try_compile_with_config` |
+//
+// tip / memo / nonce advance 的处理顺序与 V0 版**逐字一致**，只是 cu 相关指令
+// 不再写入（V1 把 compute budget 搬进了消息 config）。
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// V1 版 bundle 构建器（与 [`BundleBuilder`] 一一对应，参数换成 `V1TxConfig`）。
+pub struct BundleBuilderV1 {
+    txs: Vec<VersionedTransaction>,
+    sender: Box<dyn BundleSender>,
+}
+
+impl BundleBuilderV1 {
+    pub fn new(sender: Box<dyn BundleSender>) -> Self {
+        Self { txs: Vec::new(), sender }
+    }
+
+    pub fn len(&self) -> usize {
+        self.txs.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.txs.is_empty()
+    }
+    /// bundle 上限。
+    ///
+    /// ⚠️ 与 V0 共用同一个 [`MAX_TXS`]：**这是链上/bundle 协议的限制，不是交易格式的限制**，
+    /// V1 并没有放宽它。
+    pub fn is_full(&self) -> bool {
+        self.txs.len() >= MAX_TXS
+    }
+
+    /// 添加一笔 V1 交易。参数与 [`BuildV1Tx::build_v1_tx`] 对齐
+    /// （`config` 取代 V0 的 `cu`，且没有 ALT）。
+    ///
+    /// 链式调用：`builder.append(...)?.append(...)?.send().await`
+    pub fn append(
+        mut self,
+        ixs: &[Instruction],
+        signers: &[&Keypair],
+        tip: &Option<u64>,
+        nonce: &HashParam,
+        config: V1TxConfig,
+        memo: Option<Vec<&str>>,
+    ) -> Result<Self, BundleError<Self>> {
+        use solana_sdk::message::v1::Message as V1Message;
+        use solana_sdk::message::VersionedMessage;
+        use solana_sdk::transaction::VersionedTransaction;
+
+        if self.is_full() {
+            return Err(BundleError {
+                msg: format!("bundle full: {} >= {}", self.txs.len(), MAX_TXS),
+                builder: self,
+            });
+        }
+
+        let hash = *nonce.hash();
+        let payer = signers.first().map(|k| k.pubkey()).unwrap_or_default();
+        let mut instructions = Vec::new();
+
+        // nonce advance —— 仍是普通指令（V1 只把 compute budget 搬进了 config）
+        if let HashParam::NonceAccount { account, authority, .. } = nonce {
+            instructions.push(advance_nonce_account(account, authority));
+        }
+
+        // ⚠️ 这里**不加** ComputeBudget 指令：cu limit / priority fee 通过
+        // `config` 写进 V1 消息本身。
+
+        // tip：由调用方显式传入（按平台 cap 收窄）。
+        // 与 V0 版一致：`Some(0)` 表示不加 tip 指令。
+        if let Some(tip_amt) = tip {
+            if *tip_amt > 0 {
+                let mut tip_amt = *tip_amt;
+                if let Some(cap) = self.sender.max_tip_amount() {
+                    tip_amt = tip_amt.min(cap);
+                }
+                instructions.push(transfer(&payer, &self.sender.tip_address(), tip_amt));
+            }
+        }
+
+        // memo
+        if let Some(memo_str) = memo {
+            instructions.push(solana_sdk::instruction::Instruction {
+                program_id: *crate::constants::MEMO_PROGRAM,
+                accounts: vec![],
+                data: memo_str.join("-").into_bytes(),
+            });
+        }
+
+        instructions.extend(ixs.iter().cloned());
+
+        let message = match V1Message::try_compile_with_config(&payer, &instructions, hash, config.to_transaction_config())
+        {
+            Ok(m) => m,
+            Err(e) => {
+                return Err(BundleError {
+                    msg: format!("compile: {e}"),
+                    builder: self,
+                });
+            }
+        };
+        let transaction = match VersionedTransaction::try_new(VersionedMessage::V1(message), signers) {
+            Ok(t) => t,
+            Err(e) => {
+                return Err(BundleError {
+                    msg: format!("sign: {e}"),
+                    builder: self,
+                });
+            }
+        };
+        self.txs.push(transaction);
+
+        // 检查最新交易的序列化大小（V1 上限 4096，由平台 max_tx_size 决定实际可用值）
+        let v1 = self.txs.last().unwrap();
+        let size = bincode::serialize(v1).map(|b| b.len()).unwrap_or(usize::MAX);
+        let max = self.sender.max_tx_size();
+        if size > max {
+            self.txs.pop();
+            return Err(BundleError {
+                msg: format!("tx too large: {size} > {max}"),
+                builder: self,
+            });
+        }
+
+        Ok(self)
+    }
+
+    /// 发送 bundle（与 V0 版走同一个 [`BundleSender::send_bundle`] —— 传输层不区分版本）。
+    pub async fn send(self) -> Result<Vec<Signature>, String> {
+        if self.txs.is_empty() {
+            return Err("bundle is empty".into());
+        }
+        self.sender.send_bundle(&self.txs).await
+    }
+
+    /// 已构建的交易（**给测试/调试用**：让调用方能在发送前检查消息内容）。
+    pub fn transactions(&self) -> &[VersionedTransaction] {
+        &self.txs
+    }
+}
