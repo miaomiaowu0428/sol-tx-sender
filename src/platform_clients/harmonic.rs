@@ -132,7 +132,7 @@ impl HarmonicBlockEngine {
 impl crate::platform_clients::SendTx for HarmonicBlockEngine {
     /// 直接序列化后通过 gRPC bundle 发送。
     async fn send_tx(&self, tx: &VersionedTransaction) -> Result<(), String> {
-        let tx_bytes = bincode::serialize(tx).map_err(|e| format!("serialize tx failed: {}", e))?;
+        let tx_bytes = crate::platform_clients::serialize_transaction_wire(tx)?;
         self.send_bundle_bytes(tx_bytes).await
     }
 }

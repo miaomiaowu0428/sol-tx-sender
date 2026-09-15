@@ -187,9 +187,9 @@ impl crate::platform_clients::SendBundle for FlashBlock {
         let mut encoded_txs = Vec::with_capacity(txs.len());
         let mut sigs: Vec<Signature> = Vec::with_capacity(txs.len());
         for tx in txs {
-            let encode_tx = match bincode::serialize(tx) {
-                Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
-                Err(e) => return Err(format!("bincode serialize error: {}", e)),
+            let encode_tx = match crate::platform_clients::serialize_transaction_wire_base64(tx) {
+                Ok(s) => s,
+                Err(e) => return Err(format!("wire serialize error: {e}")),
             };
             encoded_txs.push(encode_tx);
             sigs.push(tx.sig());

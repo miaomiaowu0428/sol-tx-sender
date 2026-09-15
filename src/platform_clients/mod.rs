@@ -34,9 +34,42 @@ pub mod stellium;
 pub mod temporal;
 pub mod zeroslot;
 
+/// **把交易序列化成 Solana wire 格式**（这是发给各平台/RPC 的正确字节）。
+///
+/// # ⚠️ 为什么不能用 `bincode::serialize`
+///
+/// `VersionedTransaction.signatures` 在 Solana wire 格式里用 **`short_vec`**
+/// 编码（数量 < 128 时长度前缀只占 **1 字节**）：
+///
+/// ```ignore
+/// #[cfg_attr(feature = "serde",   serde(with = "short_vec"))]
+/// #[cfg_attr(feature = "wincode", wincode(with = "containers::Vec<_, ShortU16Len>"))]
+/// pub signatures: Vec<Signature>,
+/// ```
+///
+/// `bincode` **不认** `with = ...` 这类属性，它按自己的规则把 `Vec` 的长度写成
+/// **u64（8 字节）**，于是产出的字节不是合法的 wire transaction ——
+/// 平台会直接拒绝（FlashBlock: `1015 Transaction has bad format`）。
+///
+/// `wincode` 才有 Solana 官方的 wire 兼容 impl（`ShortU16Len` ⇔ `short_vec`）。
+/// 注意：**V0 用 bincode 也同样是错的**，只是某些平台容忍度高没暴露出来。
+///
+/// # 用法
+///
+/// 所有要把交易发出去的地方（HTTP base64 / QUIC 裸字节 / base58）都走这里。
+pub fn serialize_transaction_wire(tx: &VersionedTransaction) -> Result<Vec<u8>, String> {
+    wincode::serialize(tx).map_err(|e| format!("wincode serialize error: {e}"))
+}
+
+/// [`serialize_transaction_wire`] + base64（各平台 HTTP JSON 接口用）。
+pub fn serialize_transaction_wire_base64(tx: &VersionedTransaction) -> Result<String, String> {
+    let bytes = serialize_transaction_wire(tx)?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
 /// `VersionedTransaction` 的便捷扩展：序列化与签名提取
 pub trait TxExt {
-    /// 将交易序列化为 base64 字符串
+    /// 将交易序列化为 base64 字符串（**Solana wire 格式**）。
     fn to_base64(&self) -> Result<String, Box<dyn std::error::Error>>;
     /// 获取交易签名
     fn sig(&self) -> Signature;
@@ -44,8 +77,7 @@ pub trait TxExt {
 
 impl TxExt for VersionedTransaction {
     fn to_base64(&self) -> Result<String, Box<dyn std::error::Error>> {
-        let data = bincode::serialize(self)?;
-        Ok(base64::engine::general_purpose::STANDARD.encode(data))
+        Ok(serialize_transaction_wire_base64(self)?)
     }
     fn sig(&self) -> Signature {
         self.signatures[0]
@@ -865,7 +897,8 @@ fn test_v1_accepts_larger_than_v0_limit() {
         .expect("V1 应能容纳超过 1232 字节的交易");
 
     // 序列化后应超过旧的 1232 上限
-    let bytes = bincode::serialize(&envelope.tx.tx).unwrap();
+    // ⚠️ 用 wire 格式度量（bincode 会因长度前缀差异给出错误的大小）
+    let bytes = serialize_transaction_wire(&envelope.tx.tx).expect("wire serialize");
     assert!(
         bytes.len() > 1232,
         "该交易应超过 V0 上限，实际 {} 字节",

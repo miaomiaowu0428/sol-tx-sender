@@ -118,11 +118,13 @@ impl crate::platform_clients::BundleSender for Astralane {
     }
 
     async fn send_bundle(&self, txs: &[VersionedTransaction]) -> Result<Vec<Signature>, String> {
-        // 构建 IrisB sendBatch 二进制 body: [u16 BE len][bincode tx]...
+        // 构建 IrisB sendBatch 二进制 body: [u16 BE len][wire tx]...
+        // ⚠️ 必须是 **Solana wire 格式**（wincode），不能用 bincode ——
+        //    后者会把 signatures 的长度前缀写成 u64 而非 short_vec。
         let mut body = Vec::new();
         let mut sigs = Vec::with_capacity(txs.len());
         for tx in txs {
-            let tx_bytes = bincode::serialize(tx).map_err(|e| format!("bincode: {e}"))?;
+            let tx_bytes = crate::platform_clients::serialize_transaction_wire(tx)?;
             let len = tx_bytes.len() as u16;
             body.extend_from_slice(&len.to_be_bytes());
             body.extend_from_slice(&tx_bytes);
@@ -208,9 +210,9 @@ impl crate::platform_clients::SendBundle for Astralane {
         let mut encoded_txs = Vec::with_capacity(txs.len());
         let mut sigs: Vec<Signature> = Vec::with_capacity(txs.len());
         for tx in txs {
-            let encode_tx = match bincode::serialize(tx) {
-                Ok(bytes) => base64::prelude::BASE64_STANDARD.encode(&bytes),
-                Err(e) => return Err(format!("bincode serialize error: {}", e)),
+            let encode_tx = match crate::platform_clients::serialize_transaction_wire_base64(tx) {
+                Ok(s) => s,
+                Err(e) => return Err(format!("wire serialize error: {e}")),
             };
             encoded_txs.push(encode_tx);
             sigs.push(tx.sig());

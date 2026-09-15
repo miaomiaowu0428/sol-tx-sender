@@ -140,7 +140,7 @@ impl SendTx for EverStakeQuic {
     async fn send_tx(&self, tx: &VersionedTransaction) -> Result<(), String> {
         log_time!("ever stake quic send: ", {
             // 直接序列化为字节发送，无需 base64
-            let bytes = bincode::serialize(tx).map_err(|e| e.to_string())?;
+            let bytes = crate::platform_clients::serialize_transaction_wire(tx)?;
             self.send_raw_transaction(&bytes)
                 .await
                 .map_err(|e| format!("Everstake Quic send error: {}", e))

@@ -66,7 +66,7 @@ impl fmt::Display for AstralaneQuic {
 impl SendTx for AstralaneQuic {
     async fn send_tx(&self, tx: &VersionedTransaction) -> Result<(), String> {
         // 直接序列化为字节，QUIC 发送，无需 base64
-        let tx_bytes = bincode::serialize(tx).map_err(|e| format!("Failed to serialize transaction: {}", e))?;
+        let tx_bytes = crate::platform_clients::serialize_transaction_wire(tx)?;
 
         self.client
             .send_transaction(&tx_bytes)

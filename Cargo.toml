@@ -14,6 +14,14 @@ async-trait = "0.1"
 log = "0.4"
 dotenvy = "0.15"
 bincode = "1.3"
+# ⚠️ wincode 用于交易的 Solana wire 兼容序列化：
+#    VersionedTransaction.signatures 用的是 short_vec（1 字节长度前缀），
+#    bincode 不认 wincode(with = ...) 属性，会按 u64（8 字节）写长度，
+#    产出的字节不是合法 wire transaction → 平台报
+#    "not a valid Solana wire transaction"。
+wincode = "=0.5.5"
+# 显式依赖并开 wincode feature，VersionedTransaction 才会派生 SchemaWrite
+solana-transaction = { version = "4.0.0", features = ["wincode"] }
 lazy_static = "1.5"
 serde = "1.0.228"
 solana-sdk = "4.0.0"
