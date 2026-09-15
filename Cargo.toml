@@ -35,5 +35,3 @@ prost-types = "0.13"
 [build-dependencies]
 protoc-bin-vendored = "3"
 tonic-build = "0.12"
-
-[workspace]
