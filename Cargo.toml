@@ -20,8 +20,8 @@ solana-sdk = "4.0.0"
 solana-client = "4.2.2"
 solana-compute-budget-interface = "3.0.0"
 solana-system-interface = "3.0.0"
-utils = { git = "https://github.com/miaomiaowu0428/sol-utils.git", branch = "supportV1" }
-const-accounts = { git = "https://github.com/miaomiaowu0428/const-accounts.git", branch = "supportV1" }
+utils = { git = "https://github.com/miaomiaowu0428/sol-utils.git", branch = "main" }
+const-accounts = { git = "https://github.com/miaomiaowu0428/const-accounts.git", branch = "main" }
 rustls = "0.23.37"
 solana-tls-utils = "3.1.11"
 anyhow = "1.0.102"
