@@ -649,20 +649,28 @@ pub trait BuildV1Tx {
 /// 对应消息里的 `v1::TransactionConfig`，但用 `Option` 表达"未设置"，
 /// 与 V0 的 `cu: (Option<u32>, Option<u64>)` 习惯保持一致。
 ///
-/// # ⚠️ 链上默认值语义（与 V0 完全不同）
+/// # ⚠️ 字段的 `None` 语义**并不一致**（solana-message 源码原文档）
 ///
 /// V1 的 config **不走 ComputeBudget 指令**，而是直接写在消息头里。
-/// 任何一个字段传 `None`（= 未设置）时，**链上取 0 而不是走默认值**：
+/// 但四个字段的 `None` 含义分两类，**别想当然**：
 ///
-/// | 字段 | 传 `None` 时的链上行为 | Legacy/V0 的默认 |
-/// |---|---|---|
-/// | `compute_unit_limit` | **取 0** —— 交易直接失败 | 1,400,000 |
-/// | `priority_fee` | **取 0**（不额外付费） | 0 |
-/// | `loaded_accounts_data_size_limit` | **取 0** | 64 MiB |
-/// | `heap_size` | 32 KB | 32 KB |
+/// | 字段 | 传 `None` 的链上行为 | 必须填？ | Legacy/V0 的默认 |
+/// |---|---|---|---|
+/// | `compute_unit_limit` | **取 0** —— 交易直接失败 | ✅ 必须 | 1,400,000 |
+/// | `loaded_accounts_data_size_limit` | **取 0** —— 交易直接失败 | ✅ 必须 | 64 MiB |
+/// | `priority_fee` | 取 0（不额外付费） | 可选 | 0 |
+/// | `heap_size` | **32 KB**（= `DEFAULT_HEAP_SIZE`） | ❌ 不用填 | 32 KB |
 ///
-/// 所以 `compute_unit_limit` / `loaded_accounts_data_size_limit` 一旦不填，
-/// 交易就执行不了。
+/// 对照 `solana-message` 里的原注释：
+/// ```text
+/// /// Maximum compute units. None means use `0`.                     // ← 取 0
+/// /// Maximum bytes of account data ... None means use `0`.          // ← 取 0
+/// /// Heap size in bytes. Must be multiple of 1024. `None` = 32KB.   // ← 32KB
+/// ```
+///
+/// `heap_size` 保持 `None` 就已对齐 Legacy/V0；**别手填** —— 它会过
+/// `sanitize()` 的硬校验：必须是 1024 的倍数，且在 **32 KB ~ 256 KB** 闭区间内，
+/// 越界直接 `MessageError::InvalidHeapSize`。
 ///
 /// # [`Default`] 的取值（本 crate 选的实用值，非链上默认）
 ///
@@ -671,18 +679,20 @@ pub trait BuildV1Tx {
 /// | `compute_unit_limit` | **500,000** | 够绝大多数 swap（含两跳）；比 Legacy 的 1.4M 省费，比单指令的 200k 宽裕 |
 /// | `priority_fee` | `None` | 不参与竞价（多数平台自己会带 tip） |
 /// | `loaded_accounts_data_size_limit` | **64 MiB** | 对齐 Legacy/V0 链上默认 |
-/// | `heap_size` | `None` | 链上默认 32 KB |
+/// | `heap_size` | `None` | 链上默认 32 KB，已对齐 Legacy |
 ///
 /// 用法：`V1TxConfig { compute_unit_limit: Some(x), ..Default::default() }`
 #[derive(Debug, Clone, Copy)]
 pub struct V1TxConfig {
     /// 优先费，单位 **lamports**（不是 micro-lamports 单价）。
     pub priority_fee: Option<u64>,
-    /// 最大 compute unit。
+    /// 最大 compute unit。**`None` = 链上取 0 → 交易失败**，务必设置。
     pub compute_unit_limit: Option<u32>,
-    /// 最大可加载账户数据字节数。
+    /// 最大可加载账户数据字节数。**`None` = 链上取 0 → 交易失败**，务必设置。
     pub loaded_accounts_data_size_limit: Option<u32>,
-    /// 堆大小（字节），必须是 1024 的倍数。
+    /// 堆大小（字节）。**`None` = 32 KB**（已对齐 Legacy/V0，一般不用填）。
+    ///
+    /// 若确要覆盖：必须是 1024 的倍数，且在 32 KB ~ 256 KB 之间。
     pub heap_size: Option<u32>,
 }
 
