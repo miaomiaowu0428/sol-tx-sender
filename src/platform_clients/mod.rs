@@ -311,6 +311,43 @@ pub async fn endpoint_keep_alive() {
     }
 }
 
+/// V1 构建的一行式日志：`tip` / `gas` / `sig` 打在同一行，方便 `rg` 捞。
+///
+/// # 各字段
+///
+/// - `tip`：**实际写入交易的** SOL 转账额（lamports）。复刻 [`BuildV1Tx::build_v1_tx`]
+///   的判定顺序（`uses_tip_transfer` → `Some(0)` 视为无 → 平台 `max_tip_amount` 收窄）。
+///   为 `0` 表示**没有 tip 指令**。
+/// - `gas`：V1 的 `priority_fee`，**lamports 总额**（不是 micro-lamports/CU 单价）。
+/// - `cu`：`compute_unit_limit`。
+/// - `sig`：交易签名。
+///
+/// # 为什么单独一个函数
+///
+/// 单签 / 多签两个构建路径共用同一份日志格式，避免两处格式漂移导致 `rg` 漏抓。
+fn log_v1_build<C>(client: &C, ixs: &[Instruction], tip: &Option<u64>, config: V1TxConfig, sig: Signature)
+where
+    C: BuildTx + Display,
+{
+    // 复刻构建时的 tip 计算：只有真正会写 transfer 指令时才非 0
+    let effective_tip: u64 = if !client.uses_tip_transfer() || *tip == Some(0) {
+        0
+    } else {
+        let mut amt = tip.unwrap_or_else(|| client.get_min_tip_amount());
+        if let Some(cap) = client.max_tip_amount() {
+            amt = amt.min(cap);
+        }
+        amt
+    };
+    // 用户指令里是否自带 tip 转账（调用方自己塞的），粗略用指令数区分"有无用户 ix"
+    let n_user_ixs = ixs.len();
+    let gas = config.priority_fee.unwrap_or(0);
+    let cu = config.compute_unit_limit.unwrap_or(0);
+    info!(
+        "[v1-build] platform={client} tip_lamports={effective_tip} gas_lamports={gas} cu_limit={cu} n_user_ixs={n_user_ixs} sig={sig}"
+    );
+}
+
 /// V0 交易组装 trait，直接使用默认实现即可
 pub trait BuildV0Tx {
     /// 默认 V0 交易组装实现，支持 tip、cu、nonce、lookup table 等参数
@@ -563,12 +600,6 @@ pub trait BuildV1Tx {
                         tip_amt = tip_amt.min(cap);
                     }
                     if tip_amt > 0 {
-                        info!(
-                            "Build V1Tx with tip: {}({tip_amt}lamports) at {} tip address: {}",
-                            tip_amt as f64 / 1_000_000_000.0,
-                            self,
-                            tip_address
-                        );
                         instructions.push(transfer(&payer, &tip_address, tip_amt));
                     }
                 }
@@ -591,7 +622,12 @@ pub trait BuildV1Tx {
             let transaction =
                 VersionedTransaction::try_new(VersionedMessage::V1(message), &[signer.as_ref()])?;
             let sig = transaction.signatures[0];
-            info!("  sig: {}", sig);
+            // ⚠️ tip / gas / sig **打印在同一行**，方便 `rg` 一次性捞出三者。
+            //
+            // - `tip`：实际写入的 SOL 转账额（lamports）；平台 `uses_tip_transfer()=false`
+            //   或未达下限时为 **0**（表示没有 tip 指令）。
+            // - `gas`：V1 的 `priority_fee`（**lamports 总额**，不是 micro-lamports/CU 单价）。
+            log_v1_build(self, ixs, tip, config, sig);
             Ok(TxEnvelope {
                 tx: DetailedTx {
                     tx: transaction,
@@ -661,7 +697,8 @@ pub trait BuildV1Tx {
                 V1Message::try_compile_with_config(&payer, &instructions, hash, config.to_transaction_config())?;
             let transaction = VersionedTransaction::try_new(VersionedMessage::V1(message), signers)?;
             let sig = transaction.signatures[0];
-            info!("  sig: {}", sig);
+            // 与单签版同一份一行式日志（tip / gas / sig 同行，方便 rg）
+            log_v1_build(self, ixs, tip, config, sig);
             Ok(TxEnvelope {
                 tx: DetailedTx {
                     tx: transaction,
