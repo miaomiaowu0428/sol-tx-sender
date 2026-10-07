@@ -241,8 +241,10 @@ impl<'a, T: SendTx + Sync + Send + 'a> TxSend for TxEnvelope<'a, T> {
 pub enum Region {
     NewYork,
     Frankfurt,
+    Frankfurt2,
     Amsterdam,
     London,
+    Dublin,
     SaltLakeCity,
     Tokyo,
     LosAngeles,
@@ -259,8 +261,10 @@ impl<T: AsRef<str>> From<T> for Region {
         match value.as_ref() {
             "NewYork" => Region::NewYork,
             "Frankfurt" => Region::Frankfurt,
+            "Frankfurt2" => Region::Frankfurt2,
             "Amsterdam" => Region::Amsterdam,
             "London" => Region::London,
+            "Dublin" => Region::Dublin,
             "SaltLakeCity" => Region::SaltLakeCity,
             "Tokyo" => Region::Tokyo,
             "LosAngeles" => Region::LosAngeles,
