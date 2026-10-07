@@ -31,6 +31,7 @@ pub mod jito;
 pub mod nextblock;
 pub mod nodeone;
 pub mod stellium;
+pub mod syncro;
 pub mod temporal;
 pub mod zeroslot;
 
@@ -100,6 +101,7 @@ pub enum PlatformName {
     Nextblock,
     Stellium,
     EverStake,
+    Syncro,
 }
 
 /// 平台枚举的字符串展示实现
@@ -119,6 +121,7 @@ impl std::fmt::Display for PlatformName {
             PlatformName::Nextblock => "Nextblock",
             PlatformName::Stellium => "Stellium",
             PlatformName::EverStake => "EverStake",
+            PlatformName::Syncro => "Syncro",
         };
         write!(f, "{}", name)
     }
@@ -293,6 +296,7 @@ pub async fn endpoint_keep_alive() {
         nextblock::NextBlock::get_endpoint(),
         stellium::Stellium::get_endpoint(),
         ever_stake::EverStake::get_endpoint(),
+        syncro::Syncro::get_endpoint(),
     ];
     info!("Starting endpoint keep-alive with URLs: {:?}", urls);
     loop {
@@ -538,6 +542,7 @@ impl BuildV0Tx for nextblock::NextBlock {}
 impl BuildV0Tx for stellium::Stellium {}
 impl BuildV0Tx for ever_stake::EverStake {}
 impl BuildV0Tx for ever_stake_quic::EverStakeQuic {}
+impl BuildV0Tx for syncro::Syncro {}
 
 /// V1 交易组装（SIMD-0385 / SIMD-0296）。
 ///
@@ -820,6 +825,7 @@ impl BuildV1Tx for nextblock::NextBlock {}
 impl BuildV1Tx for stellium::Stellium {}
 impl BuildV1Tx for ever_stake::EverStake {}
 impl BuildV1Tx for ever_stake_quic::EverStakeQuic {}
+impl BuildV1Tx for syncro::Syncro {}
 
 #[test]
 fn test_region() {
