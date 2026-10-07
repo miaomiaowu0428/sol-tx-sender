@@ -123,3 +123,19 @@ curl -X POST http://fra.sender.syncro.p2p.org:8080 \
 因此 `sol-tx-sender` 的 `syncro` 模块**只实现单笔发送**，不实现 `SendBundle` /
 `BundleSender`。若官方后续开放 bundle，按 `src/platform_clients/syncro.rs` 顶部注释的
 三步补齐即可。
+
+## 在 sol-tx-dispacher 中的接入
+
+`sol-tx-dispacher` 打开 `syncro` feature 后：
+
+```rust
+TxDispacher::builder(oracle)
+    // 带 key 走私有端点（150k lamports 最低 tip、50 RPS）
+    .syncro(Syncro::init_with(std::env::var("SYNCRO_API_KEY").unwrap_or_default(), region))
+    .build();
+```
+
+路由：`slot_leader.name == "P2P.org Turbo"`（见 `sol_slot_leader::LeaderInfo::is_p2p_turbo`）
+时 `resolve_route` 返回 `SendRoute::P2pTurbo` —— 在 fallback 全平台广播的**基础上额外
+追加** Syncro 通道，不改动其它平台的行为。V0/V1、tip / cost / tip-only 五条 dispatch
+路径均已覆盖。
