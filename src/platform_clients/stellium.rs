@@ -174,5 +174,32 @@ impl crate::platform_clients::BuildTx for Stellium {
         STELLIUM_TIP_ACCOUNTS.to_vec()
     }
 
+    /// tip 封顶：**平台最低 tip 的 1.1 倍**。
+    ///
+    /// 策略组反馈 Stellium 不需要多给 tip —— 把 dispatcher 传下来的高价 tip
+    /// 砍到只比平台门槛高 10%。enforcement 在 `build_v0_tx` / `build_v1_tx` 里，
+    /// 所以单发、bundle、V0、V1 全路径自动生效（同 HeliusSwqos 的 200k 封顶）。
+    fn max_tip_amount(&self) -> Option<u64> {
+        // 1.1 倍用整数算，避免浮点：min * 11 / 10
+        Some(Self::MIN_TIP_AMOUNT_TX / 10 * 11)
+    }
+
     // 使用默认实现，无需重写 build_tx
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::platform_clients::BuildTx;
+
+    /// tip 封顶 = 平台最低 tip 的 1.1 倍。
+    #[test]
+    fn test_max_tip_is_1_1x_min() {
+        let c = Stellium::init_with("key", Region::Frankfurt);
+        let cap = c.max_tip_amount().expect("Stellium 必须设 tip 封顶");
+        assert_eq!(cap, 1_100_000);
+        assert_eq!(cap, Stellium::MIN_TIP_AMOUNT_TX / 10 * 11);
+        // 封顶必须 ≥ 最低 tip，否则连平台门槛都付不起
+        assert!(cap >= c.get_min_tip_amount());
+    }
 }

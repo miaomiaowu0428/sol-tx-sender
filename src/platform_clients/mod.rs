@@ -28,6 +28,7 @@ pub mod harmonic_proto;
 pub mod helius_max;
 pub mod helius_swqos;
 pub mod jito;
+pub mod landx;
 pub mod nextblock;
 pub mod nodeone;
 pub mod stellium;
@@ -94,6 +95,7 @@ pub enum PlatformName {
     HeliusSwqos,
     Harmonic,
     Jito,
+    LandX,
     Nodeone,
     Temporal,
     Zeroslot,
@@ -114,6 +116,7 @@ impl std::fmt::Display for PlatformName {
             PlatformName::HeliusSwqos => "HeliusSwqos",
             PlatformName::Harmonic => "HarmonicBlockEngine",
             PlatformName::Jito => "Jito",
+            PlatformName::LandX => "LandX",
             PlatformName::Nodeone => "Nodeone",
             PlatformName::Temporal => "Temporal",
             PlatformName::Zeroslot => "Zeroslot",
@@ -280,42 +283,197 @@ impl<T: AsRef<str>> From<T> for Region {
     }
 }
 
-/// 各平台 endpoint 保活定时任务
-pub async fn endpoint_keep_alive() {
-    let client: Arc<reqwest::Client> = HTTP_CLIENT.clone();
-    let urls = vec![
-        astralane::Astralane::get_endpoint(),
-        blockrazor::Blockrazor::get_endpoint(),
-        helius_max::HeliusMax::get_endpoint(),
-        helius_swqos::HeliusSwqos::get_endpoint(),
-        jito::Jito::get_endpoint(),
-        nodeone::NodeOne::get_endpoint(),
-        temporal::Temporal::get_endpoint(),
-        zeroslot::ZeroSlot::get_endpoint(),
-        flash_block::FlashBlock::get_endpoint(),
-        nextblock::NextBlock::get_endpoint(),
-        stellium::Stellium::get_endpoint(),
-        ever_stake::EverStake::get_endpoint(),
-        syncro::Syncro::get_endpoint(),
+/// 保活探测的默认间隔。
+///
+/// 必须**小于** [`HTTP_CLIENT`] 的 `pool_idle_timeout`（90s），否则连接刚被
+/// 连接池淘汰又要重建，保活等于白做。20s 给网络抖动留了余量。
+///
+/// 可用 `KEEP_ALIVE_INTERVAL_SECS` 环境变量覆盖。
+pub const DEFAULT_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(20);
+
+/// 判定「慢探测」的阈值（毫秒），超过就 warn 一次便于发现问题机房。
+const KEEP_ALIVE_SLOW_MS: u128 = 50;
+
+/// 一个保活目标：平台名（日志用）+ 探测 URL。
+#[derive(Debug, Clone)]
+pub struct KeepAliveTarget {
+    pub name: &'static str,
+    pub url: String,
+}
+
+impl KeepAliveTarget {
+    /// 构造一个保活目标。
+    ///
+    /// `pub`：下游（如 sol-tx-dispacher）按自己**真正注册的**通道自行组装列表。
+    pub fn new(name: &'static str, url: impl Into<String>) -> Self {
+        Self { name, url: url.into() }
+    }
+}
+
+/// 收集所有 **HTTP** 平台的保活目标。
+///
+/// - 只列 HTTP 平台：gRPC（Harmonic）与 QUIC（EverStakeQuic）在连接层各自保活，
+///   不在这里。
+/// - 空 URL（区域无端点，如 Temporal/ZeroSlot 的未知区域）会被过滤掉。
+/// - LandX 用官方 `/ping`；其余平台探测自身 endpoint。这里只关心
+///   **origin 的 TCP/TLS 连接是否热**，所以 401/404/405 都算「通了」。
+pub fn keep_alive_targets() -> Vec<KeepAliveTarget> {
+    let raw = vec![
+        KeepAliveTarget::new("Astralane", astralane::Astralane::get_endpoint()),
+        KeepAliveTarget::new("Blockrazor", blockrazor::Blockrazor::get_endpoint()),
+        KeepAliveTarget::new("HeliusMax", helius_max::HeliusMax::get_endpoint()),
+        KeepAliveTarget::new("HeliusSwqos", helius_swqos::HeliusSwqos::get_endpoint()),
+        KeepAliveTarget::new("Jito", jito::Jito::get_endpoint()),
+        // LandX 官方健康检查：GET http://<host>/ping -> "ok"
+        KeepAliveTarget::new("LandX", landx::LandX::get_ping_endpoint()),
+        KeepAliveTarget::new("NodeOne", nodeone::NodeOne::get_endpoint()),
+        KeepAliveTarget::new("Temporal", temporal::Temporal::get_endpoint()),
+        KeepAliveTarget::new("ZeroSlot", zeroslot::ZeroSlot::get_endpoint()),
+        KeepAliveTarget::new("FlashBlock", flash_block::FlashBlock::get_endpoint()),
+        KeepAliveTarget::new("NextBlock", nextblock::NextBlock::get_endpoint()),
+        KeepAliveTarget::new("Stellium", stellium::Stellium::get_endpoint()),
+        KeepAliveTarget::new("EverStake", ever_stake::EverStake::get_endpoint()),
+        KeepAliveTarget::new("Syncro", syncro::Syncro::get_endpoint()),
     ];
-    info!("Starting endpoint keep-alive with URLs: {:?}", urls);
+    raw.into_iter().filter(|t| !t.url.trim().is_empty()).collect()
+}
+
+/// 保活间隔：读 `KEEP_ALIVE_INTERVAL_SECS`，非法/未设置则用默认值。
+fn keep_alive_interval() -> Duration {
+    std::env::var("KEEP_ALIVE_INTERVAL_SECS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|secs| *secs > 0)
+        .map(Duration::from_secs)
+        .unwrap_or(DEFAULT_KEEP_ALIVE_INTERVAL)
+}
+
+/// 全量平台的保活入口（便利包装，保留给直接调用的场景）。
+///
+/// ⚠️ 它会给**所有**平台的 endpoint 发包，不管本进程是否真的注册了那些通道。
+/// 走 `sol-tx-dispacher` 发交易的下游（如 pumpswap-snipe）应该用 [`run_keep_alive`]
+/// + 自己注册的通道列表，避免给没启用的平台白发探测。
+pub async fn endpoint_keep_alive() {
+    run_keep_alive(keep_alive_targets()).await;
+}
+
+/// 用**给定的**目标列表跑保活：每个目标一个独立任务，常驻不返回。
+///
+/// 这是通用入口：调用方（如 sol-tx-dispacher）只把自己实际注册的平台传进来。
+/// 正常情况下任务永不返回；返回/panic 都会被观察到并打日志，不会静默消失。
+pub async fn run_keep_alive(targets: Vec<KeepAliveTarget>) {
+    if targets.is_empty() {
+        log::warn!("endpoint keep-alive: no targets, task exits");
+        return;
+    }
+
+    let interval = keep_alive_interval();
+    info!(
+        "Starting endpoint keep-alive: {} targets, interval {:?}",
+        targets.len(),
+        interval
+    );
+
+    let total = targets.len();
+    let mut set = tokio::task::JoinSet::new();
+    for (index, target) in targets.into_iter().enumerate() {
+        set.spawn(keep_alive_loop(target, index, total, interval));
+    }
+
+    // 这些任务理论上不退出；退出/panic 在这里兜底告警，避免静默丢失保活。
+    while let Some(res) = set.join_next().await {
+        match res {
+            Ok(()) => log::warn!("endpoint keep-alive task exited unexpectedly"),
+            Err(err) => log::error!("endpoint keep-alive task panicked: {err}"),
+        }
+    }
+}
+
+/// 单个 endpoint 的保活循环：先错峰启动，再按固定间隔探测。
+async fn keep_alive_loop(target: KeepAliveTarget, index: usize, total: usize, interval: Duration) {
+    // 首轮错峰：把 total 个目标均匀铺在一个 interval 上，避免同一毫秒并发探测。
+    let stagger = interval.mul_f64(index as f64 / total.max(1) as f64);
+    sleep(stagger).await;
+
+    let mut ticker = tokio::time::interval(interval);
+    // 探测本身超时/变慢时不要「补跑」积压的 tick，直接顺延。
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
-        for url in &urls {
-            let start = std::time::Instant::now();
-            let response = client.get(url).send().await;
+        ticker.tick().await;
+        ping_once(&target).await;
+    }
+}
+
+/// 探测一次。**无论成败都必须把 body 读完**，否则连接不会归还连接池。
+async fn ping_once(target: &KeepAliveTarget) {
+    let client: Arc<reqwest::Client> = HTTP_CLIENT.clone();
+    let start = std::time::Instant::now();
+
+    match client.get(&target.url).send().await {
+        Ok(resp) => {
+            let status = resp.status();
+            // ⚠️ 关键：hyper 只有在 body 被读完（或显式丢弃）后才把连接放回池子。
+            //    旧实现直接 drop Response，连接被判定不可复用 → keep-alive 白做。
+            let _ = resp.bytes().await;
             let elapsed = start.elapsed().as_millis();
-            match response {
-                Ok(_) => {
-                    if elapsed > 10 {
-                        log::warn!("{} ping successful, elapsed: {}ms", url, elapsed)
-                    }
-                }
-                Err(err) => {
-                    log::error!("{} ping failed: {}, elapsed: {}ms", url, err, elapsed);
-                }
+            if elapsed > KEEP_ALIVE_SLOW_MS {
+                log::warn!(
+                    "[keep-alive] {} {} -> {} ({}ms)",
+                    target.name,
+                    target.url,
+                    status.as_u16(),
+                    elapsed
+                );
+            } else {
+                log::debug!(
+                    "[keep-alive] {} {} -> {} ({}ms)",
+                    target.name,
+                    target.url,
+                    status.as_u16(),
+                    elapsed
+                );
             }
         }
-        sleep(Duration::from_secs(60)).await;
+        Err(err) => {
+            log::error!(
+                "[keep-alive] {} {} ping failed after {}ms: {}",
+                target.name,
+                target.url,
+                start.elapsed().as_millis(),
+                err
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod keep_alive_tests {
+    use super::*;
+
+    /// 保活列表不应包含空 URL，且每个平台名都不重复。
+    #[test]
+    fn test_keep_alive_targets_sane() {
+        let targets = keep_alive_targets();
+        assert!(!targets.is_empty());
+        for t in &targets {
+            assert!(!t.url.trim().is_empty(), "{} 的保活 URL 为空", t.name);
+            assert!(t.url.starts_with("http"), "{} 的保活 URL 不是 HTTP: {}", t.name, t.url);
+        }
+        // 同一平台在同一 region 下只应出现一次
+        let mut names: Vec<&str> = targets.iter().map(|t| t.name).collect();
+        names.sort();
+        let before = names.len();
+        names.dedup();
+        assert_eq!(before, names.len(), "keep-alive 目标名重复: {names:?}");
+        // LandX 必须在列表里，且走官方 /ping
+        assert!(targets.iter().any(|t| t.name == "LandX" && t.url.ends_with("/ping")));
+    }
+
+    /// 间隔必须小于连接池 idle 淘汰时间，否则连接刚被淘汰又重建。
+    #[test]
+    fn test_keep_alive_interval_below_pool_idle() {
+        assert!(DEFAULT_KEEP_ALIVE_INTERVAL.as_secs() < 90);
+        assert!(DEFAULT_KEEP_ALIVE_INTERVAL.as_secs() > 0);
     }
 }
 
@@ -534,6 +692,7 @@ impl BuildV0Tx for helius_max::HeliusMax {}
 impl BuildV0Tx for helius_swqos::HeliusSwqos {}
 impl BuildV0Tx for harmonic::HarmonicBlockEngine {}
 impl BuildV0Tx for jito::Jito {}
+impl BuildV0Tx for landx::LandX {}
 impl BuildV0Tx for nodeone::NodeOne {}
 impl BuildV0Tx for temporal::Temporal {}
 impl BuildV0Tx for zeroslot::ZeroSlot {}
@@ -817,6 +976,7 @@ impl BuildV1Tx for helius_max::HeliusMax {}
 impl BuildV1Tx for helius_swqos::HeliusSwqos {}
 impl BuildV1Tx for harmonic::HarmonicBlockEngine {}
 impl BuildV1Tx for jito::Jito {}
+impl BuildV1Tx for landx::LandX {}
 impl BuildV1Tx for nodeone::NodeOne {}
 impl BuildV1Tx for temporal::Temporal {}
 impl BuildV1Tx for zeroslot::ZeroSlot {}
