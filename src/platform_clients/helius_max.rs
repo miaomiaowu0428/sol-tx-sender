@@ -80,6 +80,22 @@ impl HeliusMax {
         Self::endpoint_for(*REGION).to_string()
     }
 
+    /// Sender **连接预热**端点：`<origin>/ping`（官方 `GET /ping`）。
+    ///
+    /// 注意：`endpoint_for` 返回的是提交端点 `.../fast`，它只接受
+    /// `POST sendTransaction` / `POST sendBundle`；拿它当保活 URL 会打到
+    /// 错误的路径。官方要求在空闲时对 `/ping` 发 GET 来维持热连接。
+    pub fn ping_endpoint_for(region: Region) -> String {
+        let endpoint = Self::endpoint_for(region);
+        let origin = endpoint.split_once("/fast").map(|(origin, _)| origin).unwrap_or(endpoint);
+        format!("{origin}/ping")
+    }
+
+    /// 当前区域（`REGION`）的 Sender 保活 URL。
+    pub fn get_ping_endpoint() -> String {
+        Self::ping_endpoint_for(*REGION)
+    }
+
     pub fn new() -> Self {
         let endpoint = Self::get_endpoint();
         let auth_token = std::env::var("HELIUS_KEY").unwrap_or_default();
@@ -244,5 +260,25 @@ impl crate::platform_clients::BundleSender for HeliusMax {
     }
     async fn send_bundle(&self, txs: &[VersionedTransaction]) -> Result<Vec<Signature>, String> {
         <Self as crate::platform_clients::SendBundle>::send_bundle(self, txs).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 官方保活是 `GET <origin>/ping`，不能拿提交端点 `.../fast` 去探。
+    #[test]
+    fn ping_endpoint_is_origin_plus_ping() {
+        assert_eq!(
+            HeliusMax::ping_endpoint_for(Region::Frankfurt),
+            "http://fra-sender.helius-rpc.com/ping"
+        );
+        for region in Region::ALL {
+            let url = HeliusMax::ping_endpoint_for(*region);
+            assert!(url.ends_with("/ping"), "{url}");
+            assert!(!url.contains("/fast"), "{url}");
+            assert!(!url.contains('?'), "{url}");
+        }
     }
 }

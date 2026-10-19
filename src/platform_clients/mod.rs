@@ -360,14 +360,16 @@ impl KeepAliveTarget {
 /// - 只列 HTTP 平台：gRPC（Harmonic）与 QUIC（EverStakeQuic）在连接层各自保活，
 ///   不在这里。
 /// - 空 URL（区域无端点，如 Temporal/ZeroSlot 的未知区域）会被过滤掉。
-/// - LandX 用官方 `/ping`；其余平台探测自身 endpoint。这里只关心
+/// - LandX / Helius 用官方 `/ping`；其余平台探测自身 endpoint。这里只关心
 ///   **origin 的 TCP/TLS 连接是否热**，所以 401/404/405 都算「通了」。
 pub fn keep_alive_targets() -> Vec<KeepAliveTarget> {
     let raw = vec![
         KeepAliveTarget::new("Astralane", astralane::Astralane::get_endpoint()),
         KeepAliveTarget::new("Blockrazor", blockrazor::Blockrazor::get_endpoint()),
-        KeepAliveTarget::new("HeliusMax", helius_max::HeliusMax::get_endpoint()),
-        KeepAliveTarget::new("HeliusSwqos", helius_swqos::HeliusSwqos::get_endpoint()),
+        // Helius 官方保活：GET http://<region>-sender.helius-rpc.com/ping
+        // Max / SWQOS 共用 origin，下面按 URL 去重后每个地区只留一条。
+        KeepAliveTarget::new("HeliusMax", helius_max::HeliusMax::get_ping_endpoint()),
+        KeepAliveTarget::new("HeliusSwqos", helius_swqos::HeliusSwqos::get_ping_endpoint()),
         KeepAliveTarget::new("Jito", jito::Jito::get_endpoint()),
         // LandX 官方健康检查：GET http://<host>/ping -> "ok"
         KeepAliveTarget::new("LandX", landx::LandX::get_ping_endpoint()),
@@ -380,7 +382,12 @@ pub fn keep_alive_targets() -> Vec<KeepAliveTarget> {
         KeepAliveTarget::new("EverStake", ever_stake::EverStake::get_endpoint()),
         KeepAliveTarget::new("Syncro", syncro::Syncro::get_endpoint()),
     ];
-    raw.into_iter().filter(|t| !t.url.trim().is_empty()).collect()
+    // 同一 origin 只探测一次（Helius Max / SWQOS 就是同一组 origin）。
+    let mut seen = std::collections::HashSet::new();
+    raw.into_iter()
+        .filter(|t| !t.url.trim().is_empty())
+        .filter(|t| seen.insert(t.url.clone()))
+        .collect()
 }
 
 /// 保活间隔：读 `KEEP_ALIVE_INTERVAL_SECS`，非法/未设置则用默认值。
@@ -512,6 +519,14 @@ mod keep_alive_tests {
         assert_eq!(before, names.len(), "keep-alive 目标名重复: {names:?}");
         // LandX 必须在列表里，且走官方 /ping
         assert!(targets.iter().any(|t| t.name == "LandX" && t.url.ends_with("/ping")));
+        // Helius 必须走官方 /ping，不能用提交端点 /fast 当保活
+        let helius: Vec<_> = targets.iter().filter(|t| t.name.starts_with("Helius")).collect();
+        assert!(!helius.is_empty(), "Helius 必须在保活列表里");
+        for t in helius {
+            assert!(t.url.ends_with("/ping"), "{t:?}");
+            assert!(!t.url.contains("/fast"), "{t:?}");
+            assert!(!t.url.contains("swqos_only"), "{t:?}");
+        }
     }
 
     /// 间隔必须小于连接池 idle 淘汰时间，否则连接刚被淘汰又重建。

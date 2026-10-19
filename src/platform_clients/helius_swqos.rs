@@ -80,6 +80,23 @@ impl HeliusSwqos {
         Self::endpoint_for(*REGION).to_string()
     }
 
+    /// Sender **连接预热**端点：`<origin>/ping`（官方 `GET /ping`）。
+    ///
+    /// `endpoint_for` 返回的是 `.../fast?swqos_only=true` 提交端点，不能用于
+    /// 保活；这里剥掉 `/fast` 与 query，只保留 origin 再拼 `/ping`。
+    /// Helius Max 与 SWQOS 共用同一组区域 origin，因此两者每个地区只产生
+    /// 一个保活 URL，调用方按 URL 去重即可。
+    pub fn ping_endpoint_for(region: Region) -> String {
+        let endpoint = Self::endpoint_for(region);
+        let origin = endpoint.split_once("/fast").map(|(origin, _)| origin).unwrap_or(endpoint);
+        format!("{origin}/ping")
+    }
+
+    /// 当前区域（`REGION`）的 Sender 保活 URL。
+    pub fn get_ping_endpoint() -> String {
+        Self::ping_endpoint_for(*REGION)
+    }
+
     pub fn new() -> Self {
         let endpoint = Self::get_endpoint();
         let auth_token = std::env::var("HELIUS_KEY").unwrap_or_default();
@@ -169,4 +186,25 @@ impl crate::platform_clients::BuildTx for HeliusSwqos {
         Some(200_000)
     }
     // 使用默认实现，无需重写 build_tx
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// SWQOS 的提交端点带 `?swqos_only=true`，保活必须回到纯 origin + `/ping`。
+    #[test]
+    fn ping_endpoint_strips_fast_and_swqos_query() {
+        assert_eq!(
+            HeliusSwqos::ping_endpoint_for(Region::Frankfurt),
+            "http://fra-sender.helius-rpc.com/ping"
+        );
+        for region in Region::ALL {
+            let url = HeliusSwqos::ping_endpoint_for(*region);
+            assert!(url.ends_with("/ping"), "{url}");
+            assert!(!url.contains("/fast"), "{url}");
+            assert!(!url.contains("swqos_only"), "{url}");
+            assert!(!url.contains('?'), "{url}");
+        }
+    }
 }
