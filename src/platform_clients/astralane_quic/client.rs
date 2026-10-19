@@ -7,10 +7,11 @@
 //! QUIC 端点（`IP:7000`）与 HTTP/Iris 共用同一套机房和 tip 地址，见
 //! [`super::config::ASTRALANE_QUIC_ENDPOINTS`] 与
 //! [`crate::platform_clients::astralane::ASTRALANE_TIP_ACCOUNTS`]。
-//! 发送内容为 Solana wire 字节（wincode，签名长度用 short_vec），上限 1232 字节。
+//! 发送内容为 Solana wire 字节（wincode，签名长度用 short_vec）；legacy/V0 上限
+//! 1232 字节，V1 上限 4096 字节（由客户端的 `transaction_size_limit` 按首字节判定）。
 
 use anyhow::Result;
-use astralane_quic_client::AstralaneQuicClient;
+use astralane_quic_client::{AstralaneClientConfig, AstralaneQuicClient, ServerIdentity};
 use log::info;
 use rand::seq::IndexedRandom;
 use solana_sdk::pubkey::Pubkey;
@@ -46,7 +47,13 @@ impl AstralaneQuic {
         let endpoint = Self::get_endpoint();
         let api_key = env::var("ASTRALANE_KEY").map_err(|e| format!("ASTRALANE_KEY env var required: {}", e))?;
 
-        let client = AstralaneQuicClient::connect(&endpoint, &api_key)
+        let config = AstralaneClientConfig::new(
+            endpoint.clone(),
+            api_key,
+            // Astralane 使用自签证书，与旧版客户端的 SkipServerVerification 行为一致。
+            ServerIdentity::InsecureSkipVerification,
+        );
+        let client = AstralaneQuicClient::connect(config)
             .await
             .map_err(|e| format!("Failed to connect to Astralane QUIC: {}", e))?;
 
@@ -60,7 +67,13 @@ impl AstralaneQuic {
         let endpoint = get_quic_endpoint(&region).to_string();
         let api_key = key.into();
 
-        let client = AstralaneQuicClient::connect(&endpoint, &api_key)
+        let config = AstralaneClientConfig::new(
+            endpoint.clone(),
+            api_key,
+            // Astralane 使用自签证书，与旧版客户端的 SkipServerVerification 行为一致。
+            ServerIdentity::InsecureSkipVerification,
+        );
+        let client = AstralaneQuicClient::connect(config)
             .await
             .map_err(|e| format!("Failed to connect to Astralane QUIC: {}", e))?;
 

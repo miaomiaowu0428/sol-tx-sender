@@ -1250,6 +1250,14 @@ fn test_v1_accepts_larger_than_v0_limit() {
         bytes.len()
     );
     assert!(bytes.len() <= 4096, "不应超过 V1 上限，实际 {} 字节", bytes.len());
+
+    // Astralane QUIC 客户端靠首字节 0x81 判定 V1，并据此放行到 4096 字节。
+    assert_eq!(bytes[0], 0x81, "V1 wire 首字节应为 0x81");
+    assert_eq!(
+        astralane_quic_client::transaction_size_limit(&bytes),
+        4096,
+        "V1 wire 字节应被 Astralane 客户端按 4096 上限校验"
+    );
 }
 
 // ============================================================
