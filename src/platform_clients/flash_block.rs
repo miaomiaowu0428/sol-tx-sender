@@ -49,12 +49,43 @@ pub struct FlashBlock {
     pub auth_token: String,
 }
 
+/// FlashBlock REST `/api/v2/submit-batch` 的响应。
+///
+/// 文档示例（HTTP 200）：
+/// ```json
+/// {"success":true,"code":200,"message":"...","data":{"signatures":["..."]}}
+/// ```
+/// 鉴权失败时同样是 HTTP 200，但 body 是
+/// `{"code":403,"message":"PermissionDenied ","success":false}`，
+/// 所以**不能只看 HTTP 状态码**。
 #[derive(Debug, serde::Deserialize)]
-struct FlashBlockSendBundleResponse {
-    pub _jsonrpc: Option<String>,
-    pub result: Option<String>,
-    pub error: Option<serde_json::Value>,
-    pub _id: Option<u64>,
+struct FlashBlockSubmitBatchResponse {
+    success: Option<bool>,
+    code: Option<i64>,
+    message: Option<String>,
+    data: Option<FlashBlockSubmitBatchData>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct FlashBlockSubmitBatchData {
+    #[serde(default)]
+    signatures: Vec<String>,
+}
+
+/// 解析 `/api/v2/submit-batch` 响应；`http_status` 只作为辅助，真正判成功靠 `success`。
+fn parse_submit_batch_response(http_status: u16, body: &str) -> Result<Vec<String>, String> {
+    let parsed: FlashBlockSubmitBatchResponse =
+        serde_json::from_str(body).map_err(|e| format!("flashblock response parse error: {e}, raw: {body}"))?;
+
+    if (200..300).contains(&http_status) && parsed.success == Some(true) {
+        return Ok(parsed.data.map(|data| data.signatures).unwrap_or_default());
+    }
+
+    let code = parsed.code.map(|code| code.to_string()).unwrap_or_else(|| "-".to_string());
+    let message = parsed.message.unwrap_or_else(|| body.to_string());
+    Err(format!(
+        "flashblock submit failed (http {http_status}, code {code}): {message}"
+    ))
 }
 use std::fmt;
 impl fmt::Display for FlashBlock {
@@ -119,58 +150,38 @@ impl FlashBlock {
     }
 }
 
+impl FlashBlock {
+    /// 调 FlashBlock REST `/api/v2/submit-batch`，返回服务端确认的签名列表。
+    async fn submit_batch(&self, encoded_txs: &[String]) -> Result<Vec<String>, String> {
+        let url = format!("{}/api/v2/submit-batch", self.endpoint);
+        let res = self
+            .http_client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .header("Authorization", &self.auth_token)
+            .json(&json!({ "transactions": encoded_txs }))
+            .send()
+            .await
+            .map_err(|e| format!("flashblock send error: {}", e))?;
+
+        let status = res.status();
+        let body = res
+            .text()
+            .await
+            .map_err(|e| format!("flashblock response text error: {}", e))?;
+        log::debug!("flashblock raw response ({}): {}", status, body);
+        parse_submit_batch_response(status.as_u16(), &body)
+    }
+}
+
 #[async_trait::async_trait]
 impl SendTx for FlashBlock {
     async fn send_tx(&self, tx: &VersionedTransaction) -> Result<(), String> {
         log_time!("flash block send:", {
             let tx_base64 = tx.to_base64().map_err(|e| e.to_string())?;
-            let request_body = match serde_json::to_string(&json!({
-                "id": 1,
-                "jsonrpc": "2.0",
-                "method": "sendBundle",
-                "params": [
-                    [tx_base64],
-                    { "encoding": "base64" }
-                ]
-            })) {
-                Ok(body) => body,
-                Err(e) => return Err(format!("serde_json error: {}", e)),
-            };
-            let url = format!("{}/", self.endpoint);
-
-            let res = self
-                .http_client
-                .post(&url)
-                .header("Content-Type", "application/json")
-                .header("Authorization", self.auth_token.clone())
-                .body(request_body)
-                .send()
-                .await;
-            let response = match res {
-                Ok(resp) => match resp.text().await {
-                    Ok(text) => text,
-                    Err(e) => return Err(format!("response text error: {}", e)),
-                },
-                Err(e) => {
-                    log::error!("send error: {:?}", e);
-                    return Err(format!("send error: {}", e));
-                }
-            };
-            log::info!("flashblock raw response: {:?}", response);
-            // 尝试用结构体解析响应
-            match serde_json::from_str::<FlashBlockSendBundleResponse>(&response) {
-                Ok(resp_obj) => {
-                    if let Some(result) = resp_obj.result {
-                        log::info!("flashblock bundle id: {}", result);
-                        Ok(())
-                    } else if let Some(err) = resp_obj.error {
-                        Err(format!("flashblock error: {}", err))
-                    } else {
-                        Err(format!("flashblock unknown response: {}", response))
-                    }
-                }
-                Err(e) => Err(format!("flashblock response parse error: {}, raw: {}", e, response)),
-            }
+            let signatures = self.submit_batch(&[tx_base64]).await?;
+            log::info!("[FlashBlock] submitted: {:?}", signatures);
+            Ok(())
         })
     }
 }
@@ -189,53 +200,16 @@ impl crate::platform_clients::SendBundle for FlashBlock {
             encoded_txs.push(encode_tx);
             sigs.push(tx.sig());
         }
-        let request_body = match serde_json::to_string(&json!({
-            "id": 1,
-            "jsonrpc": "2.0",
-            "method": "sendBundle",
-            "params": [
-                encoded_txs,
-                { "encoding": "base64" }
-            ]
-        })) {
-            Ok(body) => body,
-            Err(e) => return Err(format!("serde_json error: {}", e)),
-        };
-        let url = format!("{}/", self.endpoint);
 
-        let res = self
-            .http_client
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .header("Authorization", self.auth_token.clone())
-            .body(request_body)
-            .send()
-            .await;
-        let response = match res {
-            Ok(resp) => match resp.text().await {
-                Ok(text) => text,
-                Err(e) => return Err(format!("response text error: {}", e)),
-            },
-            Err(e) => {
-                log::error!("send error: {:?}", e);
-                return Err(format!("send error: {}", e));
-            }
-        };
-        log::info!("flashblock raw response: {:?}", response);
-        // 尝试用结构体解析响应
-        match serde_json::from_str::<FlashBlockSendBundleResponse>(&response) {
-            Ok(resp_obj) => {
-                if let Some(result) = resp_obj.result {
-                    log::info!("flashblock bundle id: {}", result);
-                    Ok(sigs)
-                } else if let Some(err) = resp_obj.error {
-                    Err(format!("flashblock error: {}", err))
-                } else {
-                    Err(format!("flashblock unknown response: {}", response))
-                }
-            }
-            Err(e) => Err(format!("flashblock response parse error: {}, raw: {}", e, response)),
+        let signatures = self.submit_batch(&encoded_txs).await?;
+        if signatures.len() != sigs.len() {
+            log::warn!(
+                "[FlashBlock] submitted {} txs but service returned {} signatures",
+                sigs.len(),
+                signatures.len()
+            );
         }
+        Ok(sigs)
     }
 }
 
@@ -268,5 +242,32 @@ impl crate::platform_clients::BundleSender for FlashBlock {
 
     async fn send_bundle(&self, txs: &[VersionedTransaction]) -> Result<Vec<Signature>, String> {
         <Self as crate::platform_clients::SendBundle>::send_bundle(self, txs).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_documented_success_response() {
+        let body = r#"{"success":true,"code":200,"message":"The transaction was submitted successfully, but the status of the transaction is pending.","data":{"signatures":["5XHA7ofPAf3FaLUAY3kT52c"]}}"#;
+        let sigs = parse_submit_batch_response(200, body).expect("success response");
+        assert_eq!(sigs, vec!["5XHA7ofPAf3FaLUAY3kT52c"]);
+    }
+
+    #[test]
+    fn accepts_success_without_data_for_single_tx() {
+        let body = r#"{"success":true,"code":200,"message":"ok"}"#;
+        assert!(parse_submit_batch_response(200, body).unwrap().is_empty());
+    }
+
+    #[test]
+    fn rejects_permission_denied_even_with_http_200() {
+        let body = r#"{"code":403,"message":"PermissionDenied ","success":false}"#;
+        let err = parse_submit_batch_response(200, body).unwrap_err();
+        assert!(err.contains("http 200"), "{err}");
+        assert!(err.contains("code 403"), "{err}");
+        assert!(err.contains("PermissionDenied"), "{err}");
     }
 }
