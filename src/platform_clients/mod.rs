@@ -242,8 +242,11 @@ impl<'a, T: SendTx + Sync + Send + 'a> TxSend for TxEnvelope<'a, T> {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, serde::Deserialize)]
 /// 区域枚举
+///
+/// `Deserialize` 直接解析配置文件里的字符串（variant 名即配置值，如
+/// `"Frankfurt"`）；与 [`Display`] 保持往返一致。
 pub enum Region {
     NewYork,
     Frankfurt,
@@ -299,6 +302,29 @@ impl<T: AsRef<str>> From<T> for Region {
             "Lithuania" => Region::Lithuania,
             _ => Region::Unknown,
         }
+    }
+}
+
+/// `Region` 的规范字符串形式（与 `From<&str>` 往返一致），用于日志与配置。
+impl std::fmt::Display for Region {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            Region::NewYork => "NewYork",
+            Region::Frankfurt => "Frankfurt",
+            Region::Frankfurt2 => "Frankfurt2",
+            Region::Amsterdam => "Amsterdam",
+            Region::London => "London",
+            Region::Dublin => "Dublin",
+            Region::SaltLakeCity => "SaltLakeCity",
+            Region::Tokyo => "Tokyo",
+            Region::LosAngeles => "LosAngeles",
+            Region::Pittsburgh => "Pittsburgh",
+            Region::Singapore => "Singapore",
+            Region::Limburg => "Limburg",
+            Region::Lithuania => "Lithuania",
+            Region::Unknown => "Unknown",
+        };
+        f.write_str(name)
     }
 }
 
@@ -561,6 +587,16 @@ mod region_fallback_tests {
             ever_stake_quic::EverStakeQuic::endpoint_for(Singapore),
             ever_stake_quic::EverStakeQuic::endpoint_for(Tokyo)
         );
+    }
+
+    /// `Display` 与 `From<&str>` 必须往返一致，否则配置里写的地区会被解析成
+    /// `Unknown`（静默退化到 Frankfurt）。
+    #[test]
+    fn region_string_roundtrip() {
+        for region in Region::ALL.iter().chain(std::iter::once(&Region::Unknown)) {
+            let s = region.to_string();
+            assert_eq!(Region::from(&s), *region, "Region 往返失败: {s}");
+        }
     }
 }
 
