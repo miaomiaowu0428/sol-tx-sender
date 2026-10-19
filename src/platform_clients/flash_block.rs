@@ -66,29 +66,32 @@ impl fmt::Display for FlashBlock {
 impl FlashBlock {
     pub const MIN_TIP_AMOUNT_TX: u64 = 0_000_100_000; // 单笔交易最低 tip
 
-    pub fn get_endpoint() -> String {
-        match *REGION {
-            Region::NewYork => FLASH_BLOCK_ENDPOINTS[0].to_string(),
-            Region::SaltLakeCity => FLASH_BLOCK_ENDPOINTS[1].to_string(),
-            Region::Amsterdam => FLASH_BLOCK_ENDPOINTS[2].to_string(),
-            Region::Frankfurt => FLASH_BLOCK_ENDPOINTS[3].to_string(),
-            Region::Singapore => FLASH_BLOCK_ENDPOINTS[4].to_string(),
-            Region::London => FLASH_BLOCK_ENDPOINTS[5].to_string(),
-            _ => FLASH_BLOCK_ENDPOINTS[0].to_string(),
+    /// 按区域返回 FlashBlock 接入点（纯函数，不依赖全局状态）。
+    ///
+    /// FlashBlock 没有机房的区域就近回退：
+    /// - `Frankfurt2` → Frankfurt
+    /// - `Pittsburgh` → New York，`LosAngeles` → Salt Lake City
+    /// - `Dublin` → London，`Limburg` / `Lithuania` → Amsterdam
+    /// - `Tokyo` → Singapore（旧实现会跨洲回退到 New York）
+    /// - `Unknown` → Frankfurt
+    pub fn endpoint_for(region: Region) -> &'static str {
+        match region {
+            Region::NewYork | Region::Pittsburgh => FLASH_BLOCK_ENDPOINTS[0],
+            Region::SaltLakeCity | Region::LosAngeles => FLASH_BLOCK_ENDPOINTS[1],
+            Region::Amsterdam | Region::Limburg | Region::Lithuania => FLASH_BLOCK_ENDPOINTS[2],
+            Region::Frankfurt | Region::Frankfurt2 => FLASH_BLOCK_ENDPOINTS[3],
+            Region::Singapore | Region::Tokyo => FLASH_BLOCK_ENDPOINTS[4],
+            Region::London | Region::Dublin => FLASH_BLOCK_ENDPOINTS[5],
+            Region::Unknown => FLASH_BLOCK_ENDPOINTS[3],
         }
     }
 
+    pub fn get_endpoint() -> String {
+        Self::endpoint_for(*REGION).to_string()
+    }
+
     pub fn new() -> Self {
-        let region = *crate::constants::REGION;
-        let endpoint = match region {
-            Region::NewYork => FLASH_BLOCK_ENDPOINTS[0].to_string(),
-            Region::SaltLakeCity => FLASH_BLOCK_ENDPOINTS[1].to_string(),
-            Region::Amsterdam => FLASH_BLOCK_ENDPOINTS[2].to_string(),
-            Region::Frankfurt => FLASH_BLOCK_ENDPOINTS[3].to_string(),
-            Region::Singapore => FLASH_BLOCK_ENDPOINTS[4].to_string(),
-            Region::London => FLASH_BLOCK_ENDPOINTS[5].to_string(),
-            _ => FLASH_BLOCK_ENDPOINTS[0].to_string(),
-        };
+        let endpoint = Self::get_endpoint();
         let http_client = HTTP_CLIENT.clone();
         let auth_token = env::var("FLASHBLOCK_KEY").unwrap_or_default();
         FlashBlock {
@@ -100,15 +103,7 @@ impl FlashBlock {
 
     /// 显式构造：调用方负责提供 key 和 region，不读取任何环境变量。
     pub fn init_with(key: impl Into<String>, region: Region) -> Self {
-        let endpoint = match region {
-            Region::NewYork => FLASH_BLOCK_ENDPOINTS[0].to_string(),
-            Region::SaltLakeCity => FLASH_BLOCK_ENDPOINTS[1].to_string(),
-            Region::Amsterdam => FLASH_BLOCK_ENDPOINTS[2].to_string(),
-            Region::Frankfurt => FLASH_BLOCK_ENDPOINTS[3].to_string(),
-            Region::Singapore => FLASH_BLOCK_ENDPOINTS[4].to_string(),
-            Region::London => FLASH_BLOCK_ENDPOINTS[5].to_string(),
-            _ => FLASH_BLOCK_ENDPOINTS[0].to_string(),
-        };
+        let endpoint = Self::endpoint_for(region).to_string();
         FlashBlock {
             endpoint,
             http_client: HTTP_CLIENT.clone(),

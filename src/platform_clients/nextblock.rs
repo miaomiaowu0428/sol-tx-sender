@@ -55,28 +55,39 @@ impl NextBlock {
     pub const MIN_TIP_AMOUNT_TX: u64 = 1_000_000; // NextBlock 单笔交易最低 tip（需要根据实际情况调整）
     pub const MIN_TIP_AMOUNT_BUNDLE: u64 = 1_000_000; // NextBlock 批量交易最低 tip
 
-    /// 根据区域获取对应的端点
-    pub fn get_endpoint_for_region(region: Region) -> String {
+    /// 按区域返回 NextBlock 接入点（纯函数，不依赖全局状态）。
+    ///
+    /// NextBlock 没有机房的区域就近回退：
+    /// - `Frankfurt2` / `Limburg` / `Lithuania` → Frankfurt
+    /// - `Dublin` → London
+    /// - `Pittsburgh` → New York，`LosAngeles` → Salt Lake City
+    /// - `Unknown` → Frankfurt
+    pub fn endpoint_for(region: Region) -> &'static str {
         match region {
-            Region::Frankfurt => NEXTBLOCK_ENDPOINTS[0].to_string(), // frankfurt.nextblock.io
-            Region::Amsterdam => NEXTBLOCK_ENDPOINTS[1].to_string(), // amsterdam.nextblock.io
-            Region::London => NEXTBLOCK_ENDPOINTS[2].to_string(),    // london.nextblock.io
-            Region::Singapore => NEXTBLOCK_ENDPOINTS[3].to_string(), // singapore.nextblock.io
-            Region::Tokyo => NEXTBLOCK_ENDPOINTS[4].to_string(),     // tokyo.nextblock.io
-            Region::NewYork => NEXTBLOCK_ENDPOINTS[5].to_string(),   // ny.nextblock.io
-            Region::SaltLakeCity => NEXTBLOCK_ENDPOINTS[6].to_string(), // slc.nextblock.io
-            _ => NEXTBLOCK_ENDPOINT.to_string(),                     // 默认法兰克福
+            Region::Frankfurt | Region::Frankfurt2 | Region::Limburg | Region::Lithuania => {
+                NEXTBLOCK_ENDPOINTS[0]
+            }
+            Region::Amsterdam => NEXTBLOCK_ENDPOINTS[1],
+            Region::London | Region::Dublin => NEXTBLOCK_ENDPOINTS[2],
+            Region::Singapore => NEXTBLOCK_ENDPOINTS[3],
+            Region::Tokyo => NEXTBLOCK_ENDPOINTS[4],
+            Region::NewYork | Region::Pittsburgh => NEXTBLOCK_ENDPOINTS[5],
+            Region::SaltLakeCity | Region::LosAngeles => NEXTBLOCK_ENDPOINTS[6],
+            Region::Unknown => NEXTBLOCK_ENDPOINTS[0],
         }
     }
 
+    /// 兼容旧调用：保留原函数名。
+    pub fn get_endpoint_for_region(region: Region) -> String {
+        Self::endpoint_for(region).to_string()
+    }
+
     pub fn get_endpoint() -> String {
-        Self::get_endpoint_for_region(*REGION)
+        Self::endpoint_for(*REGION).to_string()
     }
 
     pub fn new() -> Self {
-        // 根据区域选择端点
-        let region = *REGION;
-        let endpoint = Self::get_endpoint_for_region(region);
+        let endpoint = Self::get_endpoint();
 
         // 从环境变量获取 token，可能需要 Bearer 前缀
         let auth_token = std::env::var("NEXTBLOCK_TOKEN")
@@ -93,7 +104,7 @@ impl NextBlock {
     /// 显式构造：调用方负责提供 token 和 region，不读取任何环境变量。
     pub fn init_with(token: impl Into<String>, region: Region) -> Self {
         NextBlock {
-            endpoint: Self::get_endpoint_for_region(region),
+            endpoint: Self::endpoint_for(region).to_string(),
             auth_token: token.into(),
             http_client: HTTP_CLIENT.clone(),
         }

@@ -261,6 +261,25 @@ pub enum Region {
     Unknown,
 }
 
+impl Region {
+    /// 所有地区（不含 `Unknown`），用于遍历、配置校验与测试。
+    pub const ALL: &'static [Region] = &[
+        Region::NewYork,
+        Region::Frankfurt,
+        Region::Frankfurt2,
+        Region::Amsterdam,
+        Region::London,
+        Region::Dublin,
+        Region::SaltLakeCity,
+        Region::Tokyo,
+        Region::LosAngeles,
+        Region::Pittsburgh,
+        Region::Singapore,
+        Region::Limburg,
+        Region::Lithuania,
+    ];
+}
+
 /// 字符串转 Region 枚举实现
 impl<T: AsRef<str>> From<T> for Region {
     fn from(value: T) -> Self {
@@ -474,6 +493,74 @@ mod keep_alive_tests {
     fn test_keep_alive_interval_below_pool_idle() {
         assert!(DEFAULT_KEEP_ALIVE_INTERVAL.as_secs() < 90);
         assert!(DEFAULT_KEEP_ALIVE_INTERVAL.as_secs() > 0);
+    }
+}
+
+/// 地区回退的一致性约束。
+///
+/// 这套断言锁住两条规则（改 `endpoint_for` 时若破坏会立刻失败）：
+/// 1. **任何地区都不得映射到空 URL** —— 历史上 `Temporal` / `ZeroSlot` 对未知
+///    地区返回 `""`，导致每笔发送都打到非法地址。
+/// 2. **`Unknown` 一律回退 Frankfurt** —— 统一兜底，避免某些平台悄悄把欧洲
+///    流量发到纽约（跨洲）。
+#[cfg(test)]
+mod region_fallback_tests {
+    use super::*;
+
+    /// 对一个平台校验上面两条规则。
+    macro_rules! assert_region_rules {
+        ($ty:ty) => {{
+            for region in Region::ALL {
+                let ep = <$ty>::endpoint_for(*region);
+                assert!(!ep.trim().is_empty(), "{}: {:?} 映射到空 URL", stringify!($ty), region);
+            }
+            assert_eq!(
+                <$ty>::endpoint_for(Region::Unknown),
+                <$ty>::endpoint_for(Region::Frankfurt),
+                "{}: Unknown 未回退到 Frankfurt",
+                stringify!($ty)
+            );
+        }};
+    }
+
+    #[test]
+    fn all_platforms_have_no_empty_endpoint_and_fra_fallback() {
+        assert_eq!(Region::ALL.len(), 13);
+
+        assert_region_rules!(astralane::Astralane);
+        assert_region_rules!(temporal::Temporal);
+        assert_region_rules!(zeroslot::ZeroSlot);
+        assert_region_rules!(nodeone::NodeOne);
+        assert_region_rules!(blockrazor::Blockrazor);
+        assert_region_rules!(flash_block::FlashBlock);
+        assert_region_rules!(nextblock::NextBlock);
+        assert_region_rules!(stellium::Stellium);
+        assert_region_rules!(jito::Jito);
+        assert_region_rules!(helius_max::HeliusMax);
+        assert_region_rules!(helius_swqos::HeliusSwqos);
+        assert_region_rules!(ever_stake::EverStake);
+        assert_region_rules!(ever_stake_quic::EverStakeQuic);
+    }
+
+    /// 部分平台只有少数机房，单独钉死它们的就近回退，避免误改成跨洲。
+    #[test]
+    fn regional_fallbacks_are_geographic() {
+        use Region::*;
+
+        // FlashBlock 没有东京/新加坡以外的亚洲机房，东京不能回退到纽约。
+        assert_eq!(flash_block::FlashBlock::endpoint_for(Tokyo), flash_block::FlashBlock::endpoint_for(Singapore));
+
+        // Blockrazor 没有欧洲站点（除 FRA/AMS），立陶宛应回退到荷兰而非美洲。
+        assert_eq!(
+            blockrazor::Blockrazor::endpoint_for(Lithuania),
+            blockrazor::Blockrazor::endpoint_for(Amsterdam)
+        );
+
+        // Everstake QUIC 只有四个机房，新加坡回退东京。
+        assert_eq!(
+            ever_stake_quic::EverStakeQuic::endpoint_for(Singapore),
+            ever_stake_quic::EverStakeQuic::endpoint_for(Tokyo)
+        );
     }
 }
 

@@ -44,27 +44,39 @@ impl ZeroSlot {
     pub const MIN_TIP_AMOUNT_TX: u64 = 1_000_000; // 单笔交易最低 tip
     pub const MIN_TIP_AMOUNT_BUNDLE: u64 = 1_000_000; // 批量交易最低 tip
 
-    pub fn get_endpoint() -> String {
-        match *REGION {
-            Region::NewYork => ZEROSLOT_ENDPOINT[0].to_string(),
-            Region::Frankfurt => ZEROSLOT_ENDPOINT[1].to_string(),
-            Region::Amsterdam => ZEROSLOT_ENDPOINT[2].to_string(),
-            Region::Tokyo => ZEROSLOT_ENDPOINT[3].to_string(),
-            Region::LosAngeles => ZEROSLOT_ENDPOINT[4].to_string(),
-            _ => String::new(),
+    /// 按区域返回入口 URL（纯函数，不依赖全局状态）。
+    ///
+    /// 0slot 没有机房的区域就近回退：
+    /// - `Frankfurt2` → Frankfurt
+    /// - `London` / `Dublin` / `Limburg` / `Lithuania` → Amsterdam
+    /// - `Pittsburgh` → New York，`SaltLakeCity` → Los Angeles
+    /// - `Unknown` → Frankfurt
+    pub fn endpoint_for(region: Region) -> &'static str {
+        match region {
+            Region::NewYork | Region::Pittsburgh => ZEROSLOT_ENDPOINT[0],
+            Region::Frankfurt | Region::Frankfurt2 => ZEROSLOT_ENDPOINT[1],
+            Region::Amsterdam
+            | Region::London
+            | Region::Dublin
+            | Region::Limburg
+            | Region::Lithuania => ZEROSLOT_ENDPOINT[2],
+            Region::Tokyo => ZEROSLOT_ENDPOINT[3],
+            Region::LosAngeles | Region::SaltLakeCity => ZEROSLOT_ENDPOINT[4],
+            Region::Singapore => ZEROSLOT_ENDPOINT[3],
+            Region::Unknown => ZEROSLOT_ENDPOINT[1],
         }
     }
 
+    /// 兼容旧调用：从 `REGION` 全局 static 读取地区。
+    ///
+    /// 注意：不再对未知地区返回空串（旧实现 `get_endpoint()` 返回 `""`，而
+    /// `new()` 却悄悄指向 New York，两条路径不一致）。现在统一走就近回退。
+    pub fn get_endpoint() -> String {
+        Self::endpoint_for(*REGION).to_string()
+    }
+
     pub fn new() -> Self {
-        let region = *crate::constants::REGION;
-        let endpoint = match region {
-            Region::NewYork => ZEROSLOT_ENDPOINT[0].to_string(),
-            Region::Frankfurt => ZEROSLOT_ENDPOINT[1].to_string(),
-            Region::Amsterdam => ZEROSLOT_ENDPOINT[2].to_string(),
-            Region::Tokyo => ZEROSLOT_ENDPOINT[3].to_string(),
-            Region::LosAngeles => ZEROSLOT_ENDPOINT[4].to_string(),
-            _ => ZEROSLOT_ENDPOINT[0].to_string(),
-        };
+        let endpoint = Self::get_endpoint();
         let token = std::env::var("ZEROSLOT_KEY").unwrap_or_default();
         let http_client = HTTP_CLIENT.clone();
         ZeroSlot {
@@ -76,14 +88,7 @@ impl ZeroSlot {
 
     /// 显式构造：调用方负责提供 key 和 region，不读取任何环境变量。
     pub fn init_with(key: impl Into<String>, region: Region) -> Self {
-        let endpoint = match region {
-            Region::NewYork => ZEROSLOT_ENDPOINT[0].to_string(),
-            Region::Frankfurt => ZEROSLOT_ENDPOINT[1].to_string(),
-            Region::Amsterdam => ZEROSLOT_ENDPOINT[2].to_string(),
-            Region::Tokyo => ZEROSLOT_ENDPOINT[3].to_string(),
-            Region::LosAngeles => ZEROSLOT_ENDPOINT[4].to_string(),
-            _ => ZEROSLOT_ENDPOINT[0].to_string(),
-        };
+        let endpoint = Self::endpoint_for(region).to_string();
         ZeroSlot {
             endpoint,
             token: key.into(),

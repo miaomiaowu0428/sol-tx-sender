@@ -45,27 +45,39 @@ pub struct Stellium {
 impl Stellium {
     pub const MIN_TIP_AMOUNT_TX: u64 = 1_000_000; // Stellium 单笔交易最低 tip
 
-    /// 根据区域获取对应的端点
-    pub fn get_endpoint_for_region(region: Region) -> String {
+    /// 按区域返回 Stellium 接入点（纯函数，不依赖全局状态）。
+    ///
+    /// Stellium 没有机房的区域就近回退：
+    /// - `Frankfurt2` → Frankfurt
+    /// - `Dublin` → London，`Limburg` / `Lithuania` → Amsterdam
+    /// - `Pittsburgh` / `LosAngeles` / `SaltLakeCity` → New York
+    /// - `Singapore` → Tokyo
+    /// - `Unknown` → Frankfurt
+    pub fn endpoint_for(region: Region) -> &'static str {
         match region {
-            Region::NewYork => STELLIUM_ENDPOINTS[0].to_string(),   // ewr1.flashrpc.com
-            Region::Frankfurt => STELLIUM_ENDPOINTS[1].to_string(), // fra1.flashrpc.com
-            Region::Amsterdam => STELLIUM_ENDPOINTS[2].to_string(), // ams1.flashrpc.com
-            Region::London => STELLIUM_ENDPOINTS[3].to_string(),
-            Region::Tokyo => STELLIUM_ENDPOINTS[4].to_string(),
-            _ => STELLIUM_ENDPOINTS[1].to_string(),
+            Region::NewYork | Region::Pittsburgh | Region::LosAngeles | Region::SaltLakeCity => {
+                STELLIUM_ENDPOINTS[0]
+            }
+            Region::Frankfurt | Region::Frankfurt2 => STELLIUM_ENDPOINTS[1],
+            Region::Amsterdam | Region::Limburg | Region::Lithuania => STELLIUM_ENDPOINTS[2],
+            Region::London | Region::Dublin => STELLIUM_ENDPOINTS[3],
+            Region::Tokyo | Region::Singapore => STELLIUM_ENDPOINTS[4],
+            Region::Unknown => STELLIUM_ENDPOINTS[1],
         }
+    }
+
+    /// 兼容旧调用：保留原函数名。
+    pub fn get_endpoint_for_region(region: Region) -> String {
+        Self::endpoint_for(region).to_string()
     }
 
     /// 获取当前区域的端点（用于 keep-alive）
     pub fn get_endpoint() -> String {
-        Self::get_endpoint_for_region(*REGION)
+        Self::endpoint_for(*REGION).to_string()
     }
 
     pub fn new() -> Self {
-        // 根据区域选择端点
-        let region = *REGION;
-        let endpoint = Self::get_endpoint_for_region(region);
+        let endpoint = Self::get_endpoint();
 
         // 从环境变量获取 API key
         let api_key = std::env::var("STELLIUM_API_KEY").unwrap_or_default();
@@ -81,7 +93,7 @@ impl Stellium {
     /// 显式构造：调用方负责提供 key 和 region，不读取任何环境变量。
     pub fn init_with(key: impl Into<String>, region: Region) -> Self {
         Stellium {
-            endpoint: Self::get_endpoint_for_region(region),
+            endpoint: Self::endpoint_for(region).to_string(),
             api_key: key.into(),
             http_client: HTTP_CLIENT.clone(),
         }

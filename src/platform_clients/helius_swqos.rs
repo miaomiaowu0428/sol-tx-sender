@@ -56,31 +56,32 @@ pub struct HeliusSwqos {
 
 impl HeliusSwqos {
     pub const MIN_TIP_AMOUNT_TX: u64 = 0_000_005_000; // 单笔交易最低 tip（SWQOS-only，0.000005 SOL）
-    pub fn get_endpoint() -> String {
-        match *REGION {
-            Region::NewYork => HELIUS_ENDPOINT[0].to_string(),
-            Region::Amsterdam => HELIUS_ENDPOINT[1].to_string(),
-            Region::Frankfurt => HELIUS_ENDPOINT[2].to_string(),
-            Region::London => HELIUS_ENDPOINT[3].to_string(),
-            Region::SaltLakeCity => HELIUS_ENDPOINT[4].to_string(),
-            Region::Tokyo => HELIUS_ENDPOINT[5].to_string(),
-            Region::Singapore => HELIUS_ENDPOINT[6].to_string(),
-            _ => HELIUS_ENDPOINT[0].to_string(),
+    /// 按区域返回 Helius 接入点（纯函数，不依赖全局状态）。
+    ///
+    /// Helius 没有机房的区域就近回退：
+    /// - `Frankfurt2` → Frankfurt
+    /// - `Dublin` → London，`Limburg` / `Lithuania` → Amsterdam
+    /// - `Pittsburgh` → New York，`LosAngeles` → Salt Lake City
+    /// - `Unknown` → Frankfurt
+    pub fn endpoint_for(region: Region) -> &'static str {
+        match region {
+            Region::NewYork | Region::Pittsburgh => HELIUS_ENDPOINT[0],
+            Region::Amsterdam | Region::Limburg | Region::Lithuania => HELIUS_ENDPOINT[1],
+            Region::Frankfurt | Region::Frankfurt2 => HELIUS_ENDPOINT[2],
+            Region::London | Region::Dublin => HELIUS_ENDPOINT[3],
+            Region::SaltLakeCity | Region::LosAngeles => HELIUS_ENDPOINT[4],
+            Region::Tokyo => HELIUS_ENDPOINT[5],
+            Region::Singapore => HELIUS_ENDPOINT[6],
+            Region::Unknown => HELIUS_ENDPOINT[2],
         }
     }
 
+    pub fn get_endpoint() -> String {
+        Self::endpoint_for(*REGION).to_string()
+    }
+
     pub fn new() -> Self {
-        let region = *crate::constants::REGION;
-        let endpoint = match region {
-            Region::NewYork => HELIUS_ENDPOINT[0].to_string(),
-            Region::Amsterdam => HELIUS_ENDPOINT[1].to_string(),
-            Region::Frankfurt => HELIUS_ENDPOINT[2].to_string(),
-            Region::London => HELIUS_ENDPOINT[3].to_string(),
-            Region::SaltLakeCity => HELIUS_ENDPOINT[4].to_string(),
-            Region::Tokyo => HELIUS_ENDPOINT[5].to_string(),
-            Region::Singapore => HELIUS_ENDPOINT[6].to_string(),
-            _ => HELIUS_ENDPOINT[0].to_string(),
-        };
+        let endpoint = Self::get_endpoint();
         let auth_token = std::env::var("HELIUS_KEY").unwrap_or_default();
         let http_client = HTTP_CLIENT.clone();
         HeliusSwqos {
@@ -92,16 +93,7 @@ impl HeliusSwqos {
 
     /// 显式构造：调用方负责提供 key 和 region，不读取任何环境变量。
     pub fn init_with(key: impl Into<String>, region: Region) -> Self {
-        let endpoint = match region {
-            Region::NewYork => HELIUS_ENDPOINT[0].to_string(),
-            Region::Amsterdam => HELIUS_ENDPOINT[1].to_string(),
-            Region::Frankfurt => HELIUS_ENDPOINT[2].to_string(),
-            Region::London => HELIUS_ENDPOINT[3].to_string(),
-            Region::SaltLakeCity => HELIUS_ENDPOINT[4].to_string(),
-            Region::Tokyo => HELIUS_ENDPOINT[5].to_string(),
-            Region::Singapore => HELIUS_ENDPOINT[6].to_string(),
-            _ => HELIUS_ENDPOINT[0].to_string(),
-        };
+        let endpoint = Self::endpoint_for(region).to_string();
         HeliusSwqos {
             endpoint,
             auth_token: key.into(),

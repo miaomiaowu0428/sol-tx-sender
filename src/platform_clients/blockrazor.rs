@@ -56,25 +56,36 @@ impl Blockrazor {
         Self::with_client(HTTP_CLIENT.clone())
     }
 
-    pub fn get_endpoint() -> String {
-        match *REGION {
-            Region::Frankfurt => BLOCKRAZOR_ENDIPOINTS[0].to_string(),
-            Region::NewYork => BLOCKRAZOR_ENDIPOINTS[1].to_string(),
-            Region::Tokyo => BLOCKRAZOR_ENDIPOINTS[2].to_string(),
-            Region::Amsterdam => BLOCKRAZOR_ENDIPOINTS[3].to_string(),
-            _ => BLOCKRAZOR_ENDIPOINTS[0].to_string(),
+    /// 按区域返回 Blockrazor 接入点（纯函数，不依赖全局状态）。
+    ///
+    /// Blockrazor 没有机房的区域就近回退：
+    /// - `Pittsburgh` / `LosAngeles` / `SaltLakeCity` → New York
+    /// - `Singapore` → Tokyo
+    /// - `London` / `Dublin` / `Limburg` / `Lithuania` → Amsterdam
+    /// - `Unknown` → Frankfurt
+    pub fn endpoint_for(region: Region) -> &'static str {
+        match region {
+            Region::Frankfurt | Region::Frankfurt2 => BLOCKRAZOR_ENDIPOINTS[0],
+            Region::NewYork | Region::Pittsburgh | Region::LosAngeles | Region::SaltLakeCity => {
+                BLOCKRAZOR_ENDIPOINTS[1]
+            }
+            Region::Tokyo | Region::Singapore => BLOCKRAZOR_ENDIPOINTS[2],
+            Region::Amsterdam
+            | Region::London
+            | Region::Dublin
+            | Region::Limburg
+            | Region::Lithuania => BLOCKRAZOR_ENDIPOINTS[3],
+            Region::Unknown => BLOCKRAZOR_ENDIPOINTS[0],
         }
+    }
+
+    pub fn get_endpoint() -> String {
+        Self::endpoint_for(*REGION).to_string()
     }
 
     pub fn with_client(http_client: Arc<Client>) -> Self {
         let region = read_region_from_env();
-        let endpoint = match region {
-            Region::Frankfurt => BLOCKRAZOR_ENDIPOINTS[0].to_string(),
-            Region::NewYork => BLOCKRAZOR_ENDIPOINTS[1].to_string(),
-            Region::Tokyo => BLOCKRAZOR_ENDIPOINTS[2].to_string(),
-            Region::Amsterdam => BLOCKRAZOR_ENDIPOINTS[3].to_string(),
-            _ => BLOCKRAZOR_ENDIPOINTS[0].to_string(),
-        };
+        let endpoint = Self::endpoint_for(region).to_string();
         let auth_token = read_auth_token_from_env();
         Blockrazor {
             endpoint,
@@ -85,13 +96,7 @@ impl Blockrazor {
     }
 
     pub fn init_with(key: impl Into<String>, region: Region) -> Self {
-        let endpoint = match region {
-            Region::Frankfurt => BLOCKRAZOR_ENDIPOINTS[0].to_string(),
-            Region::NewYork => BLOCKRAZOR_ENDIPOINTS[1].to_string(),
-            Region::Tokyo => BLOCKRAZOR_ENDIPOINTS[2].to_string(),
-            Region::Amsterdam => BLOCKRAZOR_ENDIPOINTS[3].to_string(),
-            _ => BLOCKRAZOR_ENDIPOINTS[0].to_string(),
-        };
+        let endpoint = Self::endpoint_for(region).to_string();
         Blockrazor {
             endpoint,
             region,

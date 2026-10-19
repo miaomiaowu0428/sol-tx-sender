@@ -25,14 +25,30 @@ pub struct EverStakeQuic {
 //Establish a connection to Everstake SWQoS Quic Endpoint
 impl EverStakeQuic {
     pub const MIN_TIP_AMOUNT_TX: u64 = 0_000_500_000; // 单笔交易最低 tip
-    pub fn get_endpoint() -> String {
-        match *REGION {
-            Region::Frankfurt => "64.130.57.62:11809".to_string(),
-            Region::NewYork => "64.130.59.154:11809".to_string(),
-            Region::Amsterdam => "74.118.140.197:11809".to_string(),
-            Region::Tokyo => "208.91.107.171:11809".to_string(),
-            _ => "64.130.57.62:11809".to_string(),
+    /// 按区域返回 Everstake QUIC 接入点（纯函数，不依赖全局状态）。
+    ///
+    /// Everstake QUIC 只有 FRA / NY / AMS / TYO 四个机房，其余就近回退：
+    /// - `Frankfurt2` → Frankfurt
+    /// - `Pittsburgh` / `LosAngeles` / `SaltLakeCity` → New York
+    /// - `Singapore` → Tokyo
+    /// - `London` / `Dublin` / `Limburg` / `Lithuania` → Amsterdam
+    /// - `Unknown` → Frankfurt
+    pub fn endpoint_for(region: Region) -> &'static str {
+        match region {
+            Region::Frankfurt | Region::Frankfurt2 => "64.130.57.62:11809",
+            Region::NewYork | Region::Pittsburgh | Region::LosAngeles | Region::SaltLakeCity => {
+                "64.130.59.154:11809"
+            }
+            Region::Amsterdam | Region::London | Region::Dublin | Region::Limburg | Region::Lithuania => {
+                "74.118.140.197:11809"
+            }
+            Region::Tokyo | Region::Singapore => "208.91.107.171:11809",
+            Region::Unknown => "64.130.57.62:11809",
         }
+    }
+
+    pub fn get_endpoint() -> String {
+        Self::endpoint_for(*REGION).to_string()
     }
 
     pub async fn new() -> Result<Self, String> {
@@ -99,13 +115,7 @@ impl EverStakeQuic {
         let mut endpoint = Endpoint::client("0.0.0.0:0".parse().map_err(|_| "fail to parse ip")?).map_err(|e| e.to_string())?;
         endpoint.set_default_client_config(client_config.clone());
 
-        let quic_endpoint = match region {
-            Region::Frankfurt => "64.130.57.62:11809",
-            Region::NewYork => "64.130.59.154:11809",
-            Region::Amsterdam => "74.118.140.197:11809",
-            Region::Tokyo => "208.91.107.171:11809",
-            _ => "64.130.57.62:11809",
-        };
+        let quic_endpoint = Self::endpoint_for(region);
 
         let connection = endpoint
             .connect_with(

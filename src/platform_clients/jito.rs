@@ -59,30 +59,28 @@ impl Jito {
     pub const MIN_TIP_AMOUNT_TX: u64 = 1_000; // 单笔交易最低 tip
     pub const MIN_TIP_AMOUNT_BUNDLE: u64 = 10_000; // 批量交易最低 tip
 
-    pub fn get_endpoint() -> String {
-        match *REGION {
-            Region::NewYork => JITO_ENDPOINTS[0].to_string(),
-            Region::Frankfurt => JITO_ENDPOINTS[1].to_string(),
-            Region::Amsterdam => JITO_ENDPOINTS[2].to_string(),
-            Region::London => JITO_ENDPOINTS[3].to_string(),
-            Region::SaltLakeCity => JITO_ENDPOINTS[4].to_string(),
-            Region::Tokyo => JITO_ENDPOINTS[5].to_string(),
-            Region::Singapore => JITO_ENDPOINTS[6].to_string(),
-            _ => JITO_ENDPOINTS[0].to_string(),
+    /// 按区域返回 Jito block-engine 接入点（纯函数，不依赖全局状态）。
+    ///
+    /// Jito 没有机房的区域就近回退：
+    /// - `Frankfurt2` → Frankfurt
+    /// - `Dublin` → London，`Limburg` / `Lithuania` → Amsterdam
+    /// - `Pittsburgh` → New York，`LosAngeles` → Salt Lake City
+    /// - `Unknown` → Frankfurt
+    pub fn endpoint_for(region: Region) -> &'static str {
+        match region {
+            Region::NewYork | Region::Pittsburgh => JITO_ENDPOINTS[0],
+            Region::Frankfurt | Region::Frankfurt2 => JITO_ENDPOINTS[1],
+            Region::Amsterdam | Region::Limburg | Region::Lithuania => JITO_ENDPOINTS[2],
+            Region::London | Region::Dublin => JITO_ENDPOINTS[3],
+            Region::SaltLakeCity | Region::LosAngeles => JITO_ENDPOINTS[4],
+            Region::Tokyo => JITO_ENDPOINTS[5],
+            Region::Singapore => JITO_ENDPOINTS[6],
+            Region::Unknown => JITO_ENDPOINTS[1],
         }
     }
 
-    pub fn endpoint_for(region: Region) -> &'static str {
-        match region {
-            Region::NewYork => JITO_ENDPOINTS[0],
-            Region::Frankfurt => JITO_ENDPOINTS[1],
-            Region::Amsterdam => JITO_ENDPOINTS[2],
-            Region::London => JITO_ENDPOINTS[3],
-            Region::SaltLakeCity => JITO_ENDPOINTS[4],
-            Region::Tokyo => JITO_ENDPOINTS[5],
-            Region::Singapore => JITO_ENDPOINTS[6],
-            _ => JITO_ENDPOINTS[0],
-        }
+    pub fn get_endpoint() -> String {
+        Self::endpoint_for(*REGION).to_string()
     }
 
     pub fn new(uuid: &str) -> Self {

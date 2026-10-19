@@ -40,13 +40,25 @@ pub struct EverStake {
 impl EverStake {
     pub const MIN_TIP_AMOUNT_TX: u64 = 0_000_500_000; // 单笔交易最低 tip
 
+    /// 按区域返回 Everstake SWQoS 接入点（纯函数，不依赖全局状态）。
+    ///
+    /// Everstake 没有机房的区域就近回退：
+    /// - `Frankfurt2` → Frankfurt
+    /// - `Pittsburgh` / `LosAngeles` / `SaltLakeCity` → New York
+    /// - `Singapore` → Tokyo
+    /// - `London` / `Dublin` / `Limburg` / `Lithuania` → Amsterdam
+    /// - `Unknown` → Frankfurt
     pub fn endpoint_for(region: Region) -> &'static str {
         match region {
-            Region::Frankfurt => EVER_STAKE_ENDPOINTS[1],
-            Region::Tokyo => EVER_STAKE_ENDPOINTS[3],
-            Region::NewYork => EVER_STAKE_ENDPOINTS[2],
-            Region::Amsterdam => EVER_STAKE_ENDPOINTS[4],
-            _ => EVER_STAKE_ENDPOINTS[0],
+            Region::Frankfurt | Region::Frankfurt2 => EVER_STAKE_ENDPOINTS[1],
+            Region::NewYork | Region::Pittsburgh | Region::LosAngeles | Region::SaltLakeCity => {
+                EVER_STAKE_ENDPOINTS[2]
+            }
+            Region::Tokyo | Region::Singapore => EVER_STAKE_ENDPOINTS[3],
+            Region::Amsterdam | Region::London | Region::Dublin | Region::Limburg | Region::Lithuania => {
+                EVER_STAKE_ENDPOINTS[4]
+            }
+            Region::Unknown => EVER_STAKE_ENDPOINTS[1],
         }
     }
 
@@ -54,11 +66,15 @@ impl EverStake {
         Self::endpoint_for(*REGION).to_string()
     }
 
-    pub fn new() -> Self {
-        let endpoint = Self::get_endpoint().to_string();
+    /// 显式构造：指定地区，不读取任何环境变量。
+    pub fn from_region(region: Region) -> Self {
         EverStake {
-            json_rpc_client: Arc::new(RpcClient::new(endpoint)),
+            json_rpc_client: Arc::new(RpcClient::new(Self::endpoint_for(region).to_string())),
         }
+    }
+
+    pub fn new() -> Self {
+        Self::from_region(*REGION)
     }
 
     pub fn init_with(rpc_url: impl Into<String>) -> Self {

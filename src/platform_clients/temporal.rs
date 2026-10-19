@@ -52,16 +52,36 @@ impl Temporal {
     pub const MIN_TIP_AMOUNT_TX: u64 = 1_000_000; // 单笔交易最低 tip
     pub const MIN_TIP_AMOUNT_BUNDLE: u64 = 1_000_000; // 批量交易最低 tip
 
-    pub fn get_endpoint() -> String {
-        match *REGION {
-            // Region::Amsterdam => TEMPORAL_ENDPOINT[0].to_string(),
-            Region::Tokyo => TEMPORAL_ENDPOINT[1].to_string(),
-            Region::Singapore => TEMPORAL_ENDPOINT[2].to_string(),
-            Region::NewYork => TEMPORAL_ENDPOINT[3].to_string(),
-            Region::Amsterdam => TEMPORAL_ENDPOINT[4].to_string(),
-            Region::Frankfurt => TEMPORAL_ENDPOINT[5].to_string(),
-            _ => String::new(),
+    /// 按区域返回入口 URL（纯函数，不依赖全局状态）。
+    ///
+    /// Temporal 没有机房的区域就近回退：
+    /// - `Frankfurt2` → Frankfurt
+    /// - `London` / `Dublin` / `Limburg` / `Lithuania` → Amsterdam
+    /// - `LosAngeles` / `Pittsburgh` / `SaltLakeCity` → New York
+    /// - `Unknown` → Frankfurt
+    pub fn endpoint_for(region: Region) -> &'static str {
+        match region {
+            Region::Frankfurt | Region::Frankfurt2 => TEMPORAL_ENDPOINT[5],
+            Region::Amsterdam
+            | Region::London
+            | Region::Dublin
+            | Region::Limburg
+            | Region::Lithuania => TEMPORAL_ENDPOINT[4],
+            Region::NewYork | Region::LosAngeles | Region::Pittsburgh | Region::SaltLakeCity => {
+                TEMPORAL_ENDPOINT[3]
+            }
+            Region::Tokyo => TEMPORAL_ENDPOINT[1],
+            Region::Singapore => TEMPORAL_ENDPOINT[2],
+            Region::Unknown => TEMPORAL_ENDPOINT[5],
         }
+    }
+
+    /// 兼容旧调用：从 `REGION` 全局 static 读取地区。
+    ///
+    /// 注意：不再对未知地区返回空串（旧实现返回 `""`，导致每笔发送都打到非法
+    /// URL）。现在统一走 [`Self::endpoint_for`] 的就近回退。
+    pub fn get_endpoint() -> String {
+        Self::endpoint_for(*REGION).to_string()
     }
 
     pub fn new() -> Self {
@@ -77,14 +97,7 @@ impl Temporal {
 
     /// 显式构造：调用方负责提供 key 和 region，不读取任何环境变量。
     pub fn init_with(key: impl Into<String>, region: Region) -> Self {
-        let endpoint = match region {
-            Region::Tokyo => TEMPORAL_ENDPOINT[1].to_string(),
-            Region::Singapore => TEMPORAL_ENDPOINT[2].to_string(),
-            Region::NewYork => TEMPORAL_ENDPOINT[3].to_string(),
-            Region::Amsterdam => TEMPORAL_ENDPOINT[4].to_string(),
-            Region::Frankfurt => TEMPORAL_ENDPOINT[5].to_string(),
-            _ => TEMPORAL_ENDPOINT[5].to_string(),
-        };
+        let endpoint = Self::endpoint_for(region).to_string();
         Temporal {
             endpoint,
             token: key.into(),

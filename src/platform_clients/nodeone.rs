@@ -69,29 +69,34 @@ impl NodeOne {
     pub const MIN_TIP_AMOUNT_TX: u64 = 100_000; // 单笔交易最低 tip
     pub const MIN_TIP_AMOUNT_BUNDLE: u64 = 2_000_000; // 批量交易最低 tip
 
-    /// 按区域选择 Node1 接入点；没有对应机房时回退到 New York。
-    fn endpoint_for(region: Region) -> String {
-        let idx = match region {
-            Region::NewYork => 0,
-            Region::Amsterdam => 1,
-            Region::Frankfurt => 2,
-            Region::London => 3,
-            Region::Tokyo => 4,
-            Region::Singapore => 5,
-            Region::Frankfurt2 => 6,
-            Region::Dublin => 7,
-            _ => 0,
-        };
-        NODEONE_ENDPOINT[idx].to_string()
+    /// 按区域返回 Node1 接入点（纯函数，不依赖全局状态）。
+    ///
+    /// Node1 没有机房的区域就近回退：
+    /// - `Pittsburgh` / `LosAngeles` / `SaltLakeCity` → New York
+    /// - `Limburg` / `Lithuania` → Amsterdam
+    /// - `Unknown` → Frankfurt
+    pub fn endpoint_for(region: Region) -> &'static str {
+        match region {
+            Region::NewYork | Region::Pittsburgh | Region::LosAngeles | Region::SaltLakeCity => {
+                NODEONE_ENDPOINT[0]
+            }
+            Region::Amsterdam | Region::Limburg | Region::Lithuania => NODEONE_ENDPOINT[1],
+            Region::Frankfurt => NODEONE_ENDPOINT[2],
+            Region::London => NODEONE_ENDPOINT[3],
+            Region::Tokyo => NODEONE_ENDPOINT[4],
+            Region::Singapore => NODEONE_ENDPOINT[5],
+            Region::Frankfurt2 => NODEONE_ENDPOINT[6],
+            Region::Dublin => NODEONE_ENDPOINT[7],
+            Region::Unknown => NODEONE_ENDPOINT[2],
+        }
     }
 
     pub fn get_endpoint() -> String {
-        Self::endpoint_for(*REGION)
+        Self::endpoint_for(*REGION).to_string()
     }
 
     pub fn new() -> Self {
-        let region = *crate::constants::REGION;
-        let endpoint = Self::endpoint_for(region);
+        let endpoint = Self::get_endpoint();
         let auth_token = std::env::var("NODEONE_KEY").unwrap_or_default();
         let http_client = HTTP_CLIENT.clone();
         NodeOne {
@@ -103,7 +108,7 @@ impl NodeOne {
 
     /// 显式构造：调用方负责提供 key 和 region，不读取任何环境变量。
     pub fn init_with(key: impl Into<String>, region: Region) -> Self {
-        let endpoint = Self::endpoint_for(region);
+        let endpoint = Self::endpoint_for(region).to_string();
         NodeOne {
             endpoint,
             auth_token: key.into(),
