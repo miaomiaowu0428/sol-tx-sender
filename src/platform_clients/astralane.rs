@@ -1,3 +1,25 @@
+//! **Astralane** HTTP（Iris）发送器。
+//!
+//! 官方文档（2026-10 同步）：
+//! - Endpoints and Configs：<https://astralane.gitbook.io/docs/low-latency/endpoints-and-configs>
+//! - Send Txn Fee Tiers：<https://astralane.gitbook.io/docs/low-latency/send-txn-fee-tiers>
+//! - QUIC：<https://astralane.gitbook.io/docs/low-latency/submit-transactions/quic-transaction-submission>
+//!
+//! 实现要点与端点/费率明细见 `docs/astralane.md`。
+//!
+//! # 端点
+//!
+//! 官方目前提供 **Global Edge** 与 11 个区域 Iris 端点（`fr` / `fr2` / `la` / `jp` /
+//! `ny` / `ams` / `ams2` / `lim` / `sg` / `lit` / `lon`）。官方建议同时广播到
+//! Global Edge 和最靠近的机房；本客户端的 [`Astralane::endpoint_for`] 仍按
+//! [`Region`] 选**单个**区域端点（Global Edge 见 [`ASTRALANE_GLOBAL_ENDPOINT`]），
+//! 需要双发时由调度层注册两个实例或直接覆盖 `endpoint` 字段。
+//!
+//! # 最低 tip
+//!
+//! 官方按滚动 7 天 tip 量分档：Free 0.001 SOL、VIP 1/2 0.0001 SOL、VIP 3
+//! 0.00001 SOL。本实现沿用 **VIP 3** 档位值（见 [`Astralane::MIN_TIP_AMOUNT_TX`]）。
+
 use std::fmt;
 impl fmt::Display for Astralane {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -14,7 +36,6 @@ struct AstralaneSendBundleResponse {
     pub _id: Option<u64>,
 }
 
-use base64::Engine;
 use log::info;
 use rand::seq::IndexedRandom;
 use reqwest::Client;
@@ -31,6 +52,9 @@ use solana_sdk::{pubkey, pubkey::Pubkey};
 use crate::constants::{HTTP_CLIENT, REGION};
 use crate::platform_clients::{PlatformName, Region};
 
+/// 官方 tip 地址（8 个基础地址 + 9 个 Recently Added，共 17 个）。
+///
+/// 地址同时用于：交易内 tip 收款、[`BuildTx::tip_recvs`]。
 pub const ASTRALANE_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("astrazznxsGUhWShqgNtAdfrzP2G83DzcWVJDxwV9bF"),
     pubkey!("astra4uejePWneqNaJKuFFA8oonqCE1sqF6b45kDMZm"),
@@ -40,14 +64,41 @@ pub const ASTRALANE_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("astraubkDw81n4LuutzSQ8uzHCv4BhPVhfvTcYv8SKC"),
     pubkey!("astraZW5GLFefxNPAatceHhYjfA1ciq9gvfEg2S47xk"),
     pubkey!("astrawVNP4xDBKT7rAdxrLYiTSTdqtUr63fSMduivXK"),
+    // Recently Added（2026-10 文档新增）
+    pubkey!("AstrA1ejL4UeXC2SBP4cpeEmtcFPZVLxx3XGKXyCW6to"),
+    pubkey!("AsTra79FET4aCKWspPqeSFvjJNyp96SvAnrmyAxqg5b7"),
+    pubkey!("AstrABAu8CBTyuPXpV4eSCJ5fePEPnxN8NqBaPKQ9fHR"),
+    pubkey!("AsTRADtvb6tTmrsqULQ9Wji9PigDMjhfEMza6zkynEvV"),
+    pubkey!("AsTRAEoyMofR3vUPpf9k68Gsfb6ymTZttEtsAbv8Bk4d"),
+    pubkey!("AStrAJv2RN2hKCHxwUMtqmSxgdcNZbihCwc1mCSnG83W"),
+    pubkey!("Astran35aiQUF57XZsmkWMtNCtXGLzs8upfiqXxth2bz"),
+    pubkey!("AStRAnpi6kFrKypragExgeRoJ1QnKH7pbSjLAKQVWUum"),
+    pubkey!("ASTRaoF93eYt73TYvwtsv6fMWHWbGmMUZfVZPo3CRU9C"),
 ];
 
+/// Global Edge 端点：官方建议与最近区域端点**同时**广播。
+///
+/// 本客户端不会自动双发，需要时由调用方额外注册一个实例并把 `endpoint`
+/// 覆盖为该值（或直接构造等价的 [`Astralane`]）。
+pub const ASTRALANE_GLOBAL_ENDPOINT: &str = "https://edge.astralane.io/iris";
+
+/// 官方区域 Iris 端点（`/iris?api-key=...` 由请求时拼接）。
+///
+/// 顺序与 [`Astralane::endpoint_for`] 的映射保持一致，便于测试与遍历。
+/// `la` 对应官方文档中的 Los Angeles（旧文档曾称 San Francisco，旧 `lax`
+/// 域名已废弃）。
 pub const ASTRALANE_ENDPOINTS: &[&str] = &[
-    "http://fr.gateway.astralane.io/iris",  // Frankfurt
-    "http://lax.gateway.astralane.io/iris", // San Fransisco
-    "http://jp.gateway.astralane.io/iris",  // Tokyo
-    "http://ny.gateway.astralane.io/iris",  // NewYork
-    "http://ams.gateway.astralane.io/iris", // Amsterdam
+    "http://fr.gateway.astralane.io/iris",   // Frankfurt（recommended）
+    "http://fr2.gateway.astralane.io/iris",  // Frankfurt 2
+    "http://la.gateway.astralane.io/iris",   // Los Angeles
+    "http://jp.gateway.astralane.io/iris",   // Tokyo
+    "http://ny.gateway.astralane.io/iris",   // New York
+    "http://ams.gateway.astralane.io/iris",  // Amsterdam（recommended）
+    "http://ams2.gateway.astralane.io/iris", // Amsterdam 2（Cherry Servers）
+    "http://lim.gateway.astralane.io/iris",  // Limburg
+    "http://sg.gateway.astralane.io/iris",   // Singapore
+    "http://lit.gateway.astralane.io/iris",  // Lithuania
+    "http://lon.gateway.astralane.io/iris",  // London
 ];
 
 #[derive(Clone)]
@@ -58,18 +109,35 @@ pub struct Astralane {
 }
 
 impl Astralane {
-    pub const MIN_TIP_AMOUNT_TX: u64 = 0_000_010_000; // 单笔交易最低 tip
-    pub const MIN_TIP_AMOUNT_BUNDLE: u64 = 0_000_100_000; // 批量交易最低 tip
+    /// 单笔交易最低 tip：0.00001 SOL（10,000 lamports）。
+    ///
+    /// 官方按滚动 7 天 tip 量分档：Free 0.001 SOL、VIP 1/2 0.0001 SOL、VIP 3
+    /// 0.00001 SOL。这里沿用 **VIP 3** 档位；若账号档位更低需自行调高。
+    pub const MIN_TIP_AMOUNT_TX: u64 = 0_000_010_000;
+    /// 批量交易最低 tip：0.0001 SOL（100,000 lamports，对应 VIP 1/2 档）。
+    pub const MIN_TIP_AMOUNT_BUNDLE: u64 = 0_000_100_000;
 
     /// 根据 Region 返回对应的 endpoint URL（纯函数，不依赖全局状态）。
+    ///
+    /// 没有 Astralane 机房的区域就近回退：
+    /// - `Dublin` → London
+    /// - `SaltLakeCity` → Los Angeles
+    /// - `Pittsburgh` → New York
+    /// - `Unknown` → Frankfurt
     pub fn endpoint_for(region: Region) -> &'static str {
         match region {
-            Region::Frankfurt => ASTRALANE_ENDPOINTS[0],
-            Region::LosAngeles => ASTRALANE_ENDPOINTS[1],
-            Region::Tokyo => ASTRALANE_ENDPOINTS[2],
-            Region::NewYork => ASTRALANE_ENDPOINTS[3],
-            Region::Amsterdam => ASTRALANE_ENDPOINTS[4],
-            _ => ASTRALANE_ENDPOINTS[0],
+            Region::Frankfurt => "http://fr.gateway.astralane.io/iris",
+            Region::Frankfurt2 => "http://fr2.gateway.astralane.io/iris",
+            Region::LosAngeles => "http://la.gateway.astralane.io/iris",
+            Region::Tokyo => "http://jp.gateway.astralane.io/iris",
+            Region::NewYork | Region::Pittsburgh => "http://ny.gateway.astralane.io/iris",
+            Region::Amsterdam => "http://ams.gateway.astralane.io/iris",
+            Region::Limburg => "http://lim.gateway.astralane.io/iris",
+            Region::Singapore => "http://sg.gateway.astralane.io/iris",
+            Region::Lithuania => "http://lit.gateway.astralane.io/iris",
+            Region::London | Region::Dublin => "http://lon.gateway.astralane.io/iris",
+            Region::SaltLakeCity => "http://la.gateway.astralane.io/iris",
+            Region::Unknown => "http://fr.gateway.astralane.io/iris",
         }
     }
 
@@ -295,4 +363,49 @@ impl crate::platform_clients::BuildTx for Astralane {
     }
 
     // 使用默认实现，无需重写 build_tx
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 官方 tip 地址共 17 个（8 基础 + 9 Recently Added），且不能有重复/漏抄。
+    #[test]
+    fn tip_accounts_complete_and_unique() {
+        assert_eq!(ASTRALANE_TIP_ACCOUNTS.len(), 17);
+        let mut uniq = ASTRALANE_TIP_ACCOUNTS.to_vec();
+        uniq.sort();
+        uniq.dedup();
+        assert_eq!(uniq.len(), 17, "ASTRALANE_TIP_ACCOUNTS 存在重复地址");
+    }
+
+    /// 每个 Region 都映射到官方区域端点；没有机房的区域按注释就近回退。
+    #[test]
+    fn endpoint_per_region_maps_to_official_list() {
+        assert_eq!(ASTRALANE_ENDPOINTS.len(), 11);
+        assert!(ASTRALANE_GLOBAL_ENDPOINT.ends_with("/iris"));
+
+        let cases = [
+            (Region::Frankfurt, "http://fr.gateway.astralane.io/iris"),
+            (Region::Frankfurt2, "http://fr2.gateway.astralane.io/iris"),
+            (Region::LosAngeles, "http://la.gateway.astralane.io/iris"),
+            (Region::Tokyo, "http://jp.gateway.astralane.io/iris"),
+            (Region::NewYork, "http://ny.gateway.astralane.io/iris"),
+            (Region::Amsterdam, "http://ams.gateway.astralane.io/iris"),
+            (Region::Limburg, "http://lim.gateway.astralane.io/iris"),
+            (Region::Singapore, "http://sg.gateway.astralane.io/iris"),
+            (Region::Lithuania, "http://lit.gateway.astralane.io/iris"),
+            (Region::London, "http://lon.gateway.astralane.io/iris"),
+            // 就近回退
+            (Region::Dublin, "http://lon.gateway.astralane.io/iris"),
+            (Region::SaltLakeCity, "http://la.gateway.astralane.io/iris"),
+            (Region::Pittsburgh, "http://ny.gateway.astralane.io/iris"),
+            (Region::Unknown, "http://fr.gateway.astralane.io/iris"),
+        ];
+        for (region, expected) in cases {
+            let actual = Astralane::endpoint_for(region);
+            assert_eq!(actual, expected, "region {region:?}");
+            assert!(ASTRALANE_ENDPOINTS.contains(&actual), "endpoint 未收录: {actual}");
+        }
+    }
 }

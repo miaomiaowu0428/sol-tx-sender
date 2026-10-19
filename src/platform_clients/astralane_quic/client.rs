@@ -1,3 +1,14 @@
+//! **Astralane** QUIC 发送器（fire-and-forget，单连接多路复用）。
+//!
+//! 官方文档（2026-10 同步）：
+//! - QUIC：<https://astralane.gitbook.io/docs/low-latency/submit-transactions/quic-transaction-submission>
+//! - Endpoints and Configs：<https://astralane.gitbook.io/docs/low-latency/endpoints-and-configs>
+//!
+//! QUIC 端点（`IP:7000`）与 HTTP/Iris 共用同一套机房和 tip 地址，见
+//! [`super::config::ASTRALANE_QUIC_ENDPOINTS`] 与
+//! [`crate::platform_clients::astralane::ASTRALANE_TIP_ACCOUNTS`]。
+//! 发送内容为 Solana wire 字节（wincode，签名长度用 short_vec），上限 1232 字节。
+
 use anyhow::Result;
 use astralane_quic_client::AstralaneQuicClient;
 use log::info;
@@ -20,6 +31,11 @@ pub struct AstralaneQuic {
 }
 
 impl AstralaneQuic {
+    /// 单笔交易最低 tip：0.0001 SOL（100,000 lamports）。
+    ///
+    /// 官方最低 tip 按账号档位（滚动 7 天 tip 量）计算：Free 0.001、VIP 1/2
+    /// 0.0001、VIP 3 0.00001 SOL。QUIC 与 HTTP 共用同一套费率档位；此处保守
+    /// 取 VIP 1/2 档，HTTP 侧 [`crate::platform_clients::astralane::Astralane::MIN_TIP_AMOUNT_TX`] 取 VIP 3 档。
     pub const MIN_TIP_AMOUNT_TX: u64 = 100_000; // 单笔交易最低 tip (100,000 lamports)
 
     pub fn get_endpoint() -> String {
@@ -53,7 +69,6 @@ impl AstralaneQuic {
             endpoint,
         })
     }
-
 }
 
 impl fmt::Display for AstralaneQuic {
