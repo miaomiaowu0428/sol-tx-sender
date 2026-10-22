@@ -35,5 +35,19 @@ pub static REGION: LazyLock<Region> = LazyLock::new(|| {
     Region::from(region_str)
 });
 
+/// 当前默认使用的 memo 程序：V4。
+///
+/// 指令数据格式与旧版完全一致 —— 直接把 UTF-8 原文作为 data、`accounts` 留空，
+/// 所以调用方无需改动；区别只在于链上程序实现更精简，消耗的 CU 更低。
+///
+/// ⚠️ 这是一个**可升级**（upgradeable）的第三方程序，升级权限不在我们手里。
 pub static MEMO_PROGRAM: LazyLock<solana_sdk::pubkey::Pubkey> =
+    LazyLock::new(|| pubkey!("Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH"));
+
+/// 旧版 memo 程序（SPL Memo v3，代码里习惯称 v2）。
+///
+/// 保留它是为了：
+/// - 解析侧兼容历史交易（pumpswap-snipe 的 `MemoMsg` 两个 program id 都认）；
+/// - 万一 V4 出问题（被升级/关闭），可以一行切回来。
+pub static LEGACY_MEMO_PROGRAM: LazyLock<solana_sdk::pubkey::Pubkey> =
     LazyLock::new(|| pubkey!("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"));
