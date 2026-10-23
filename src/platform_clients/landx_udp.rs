@@ -80,12 +80,20 @@ pub const LANDX_UDP_HOSTS: &[&str] = &[
 ];
 
 /// LandX UDP 发送客户端（无连接状态，不需要重连/保活）。
+///
+/// # 多入口扇出（`targets`）
+///
+/// 可以把**同一个包**同时发给多台同城机器（阿姆斯特丹 `ams1`/`ams2`，
+/// 法兰克福 `fra1`/`fra2`/`fra3`），覆盖不同 provider / 不同线路。
+/// 包内容完全相同 ⇒ 服务端看到的是同一笔交易。
+///
+/// 由环境变量 `LANDX_FANOUT` 控制（默认只发主入口），见
+/// [`crate::platform_clients::landx::resolve_fanout`]。
 #[derive(Clone)]
 pub struct LandXUdp {
     socket: Arc<UdpSocket>,
-    /// 解析好的目标地址；解析失败时用 [`Self::host`] 重试。
-    addr: SocketAddr,
-    host: String,
+    /// (host, 已解析地址)，主入口在前。
+    targets: Vec<(String, SocketAddr)>,
     /// 已校验为 12 字节的 API key。
     api_key: [u8; LANDX_API_KEY_LEN],
     /// MTU 告警只打一次，别在热路径刷屏。
@@ -96,7 +104,7 @@ impl LandXUdp {
     /// 单笔交易最低 tip：与 HTTP 通道一致（0.001 SOL）。
     pub const MIN_TIP_AMOUNT_TX: u64 = LandX::MIN_TIP_AMOUNT_TX;
 
-    /// 区域 → UDP 机房（**包含仅 UDP 的 4 个**，这是相比 HTTP 通道多出来的）。
+    /// 区域 → UDP **主**机房（**包含仅 UDP 的 4 个**，这是相比 HTTP 通道多出来的）。
     pub fn endpoint_for(region: Region) -> &'static str {
         match region {
             Region::Amsterdam => LANDX_UDP_HOSTS[0],                       // ams1
@@ -116,32 +124,68 @@ impl LandXUdp {
         Self::endpoint_for(*REGION).to_string()
     }
 
+    /// 按 region + `LANDX_FANOUT` 算出最终的 host 列表（主入口在前、已去重）。
+    ///
+    /// UDP 比 HTTP 多 4 个「仅 UDP」机房，所以 `region` 扇出在法兰克福会得到
+    /// `fra1 + fra2 + fra3` 三台，而 HTTP 只有 `fra1`。
+    pub fn endpoints_for(region: Region) -> Vec<String> {
+        let primary = Self::endpoint_for(region);
+        // 默认开启：同城多机器（法兰克福 fra1+fra2+fra3）。
+        let spec = std::env::var("LANDX_FANOUT").unwrap_or_else(|_| "region".to_string());
+        match crate::platform_clients::landx::resolve_fanout(primary, LANDX_UDP_HOSTS, &spec) {
+            Ok(list) => list,
+            Err(e) => {
+                warn!("[LandXUdp] LANDX_FANOUT 解析失败，回退单入口: {e}");
+                vec![primary.to_string()]
+            }
+        }
+    }
+
     /// 从环境变量 `LANDX_API_KEY` + `REGION` 构造。
     pub async fn new() -> Result<Self, String> {
         let key = std::env::var("LANDX_API_KEY").map_err(|e| format!("LANDX_API_KEY env var required: {e}"))?;
         Self::init_with(key, *REGION).await
     }
 
-    /// 显式构造：校验 key、解析域名、绑一个 UDP socket。
+    /// 显式构造：校验 key、解析每个 host、绑一个 UDP socket。
     pub async fn init_with(api_key: impl Into<String>, region: Region) -> Result<Self, String> {
         let api_key = parse_api_key(&api_key.into())?;
-        let host = Self::endpoint_for(region).to_string();
-        let addr = resolve(&host).await?;
+
+        let mut targets = Vec::new();
+        for host in Self::endpoints_for(region) {
+            match resolve(&host).await {
+                Ok(addr) => targets.push((host, addr)),
+                // 主入口失败是致命的；追加的入口失败只告警跳过
+                Err(e) if targets.is_empty() => return Err(e),
+                Err(e) => warn!("[LandXUdp] 跳过 {host}: {e}"),
+            }
+        }
 
         let socket = UdpSocket::bind("0.0.0.0:0")
             .await
             .map_err(|e| format!("bind udp socket: {e}"))?;
 
+        info!(
+            "[LandXUdp] 目标 {} 台: {}",
+            targets.len(),
+            targets
+                .iter()
+                .map(|(h, _)| h.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+
         Ok(Self {
             socket: Arc::new(socket),
-            addr,
-            host,
+            targets,
             api_key,
             mtu_warned: Arc::new(AtomicBool::new(false)),
         })
     }
 
-    /// 提交一笔**已签名**的交易（wire 字节）。返回 `Ok` 仅代表包交给内核了。
+    /// 提交一笔**已签名**的交易（wire 字节）：同一个包打到所有目标。
+    ///
+    /// 返回 `Ok` 仅代表至少有一台的内核收下了包 —— UDP 没有回执。
     pub async fn send_transaction_bytes(&self, wire_tx: &[u8]) -> Result<(), String> {
         let packet = encode_packet(&self.api_key, wire_tx)?;
 
@@ -157,26 +201,38 @@ impl LandXUdp {
         // 默认 1 份，设 LANDX_UDP_COPIES=2 可增强抗丢包。
         let copies = udp_copies();
 
-        for attempt in 0..copies {
-            match self.socket.send_to(&packet, self.addr).await {
-                Ok(_sent) => {}
-                // 第一次失败时尝试重新解析一次（机房切 IP / DNS 过期）
-                Err(e) if attempt == 0 => {
-                    warn!("[LandXUdp] 首次 sendto 失败({e})，重解析 {} 后重试", self.host);
-                    match resolve(&self.host).await {
-                        Ok(addr) => {
-                            self.socket
-                                .send_to(&packet, addr)
-                                .await
-                                .map_err(|e| format!("sendto({addr}): {e}"))?;
+        let mut ok = 0usize;
+        let mut errors: Vec<String> = Vec::new();
+
+        for (host, addr) in &self.targets {
+            for _ in 0..copies {
+                match self.socket.send_to(&packet, *addr).await {
+                    Ok(_) => {
+                        ok += 1;
+                        continue;
+                    }
+                    // 失败时重解析一次（机房切 IP / DNS 过期）
+                    Err(e) => {
+                        warn!("[LandXUdp] sendto {host}({addr}) 失败: {e}，重解析后重试");
+                        match resolve(host).await {
+                            Ok(fresh) => match self.socket.send_to(&packet, fresh).await {
+                                Ok(_) => ok += 1,
+                                Err(e2) => errors.push(format!("{host}({addr}): {e2}")),
+                            },
+                            Err(e2) => errors.push(format!("{host}: {e2}")),
                         }
-                        Err(e) => return Err(e),
                     }
                 }
-                Err(e) => return Err(format!("sendto({}): {e}", self.addr)),
             }
         }
 
+        if ok == 0 {
+            return Err(format!(
+                "all {} landx udp target(s) failed: {}",
+                self.targets.len(),
+                errors.join(" | ")
+            ));
+        }
         Ok(())
     }
 
@@ -185,12 +241,19 @@ impl LandXUdp {
         self.socket.local_addr().map_err(|e| e.to_string())
     }
 
-    pub fn target(&self) -> SocketAddr {
-        self.addr
+    /// 全部目标地址（主入口在前）。
+    pub fn targets(&self) -> Vec<SocketAddr> {
+        self.targets.iter().map(|(_, a)| *a).collect()
     }
 
+    /// 主入口地址。
+    pub fn target(&self) -> Option<SocketAddr> {
+        self.targets.first().map(|(_, a)| *a)
+    }
+
+    /// 主入口 host。
     pub fn host(&self) -> &str {
-        &self.host
+        self.targets.first().map(|(h, _)| h.as_str()).unwrap_or("")
     }
 }
 
@@ -246,7 +309,7 @@ async fn resolve(host: &str) -> Result<SocketAddr, String> {
 
 impl fmt::Display for LandXUdp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "LandXUdp({}:{})", self.host, LANDX_UDP_PORT)
+        write!(f, "LandXUdp({}x{}:{})", self.targets.len(), self.host(), LANDX_UDP_PORT)
     }
 }
 
@@ -259,7 +322,7 @@ impl SendTx for LandXUdp {
             // ⚠️ 到这只代表包交给内核了：UDP 无回执。
             info!(
                 "[LandXUdp] {}:{} 已投递（UDP 无回执）sig={}",
-                self.host,
+                self.host(),
                 LANDX_UDP_PORT,
                 tx.signatures.first().map(|s| s.to_string()).unwrap_or_default()
             );
@@ -365,6 +428,48 @@ mod tests {
         for h in crate::platform_clients::landx::LANDX_UDP_ONLY_HOSTS {
             assert!(LANDX_UDP_HOSTS.contains(h), "UDP 表缺 {h}");
         }
+    }
+
+    /// 法兰克福的 `region` 扇出在 UDP 侧能拿到 3 台（fra1/fra2/fra3，后两台仅 UDP）。
+    #[test]
+    fn frankfurt_udp_region_fanout_covers_three_hosts() {
+        let list = crate::platform_clients::landx::resolve_fanout(
+            "fra1.landx.dev",
+            LANDX_UDP_HOSTS,
+            "region",
+        )
+        .unwrap();
+        assert_eq!(
+            list,
+            vec![
+                "fra1.landx.dev".to_string(),
+                "fra2.landx.dev".to_string(),
+                "fra3.landx.dev".to_string(),
+            ]
+        );
+    }
+
+    /// UDP 侧能看到全部 11 台，`all` 会全部包含。
+    #[test]
+    fn udp_region_fanout_for_amsterdam() {
+        let list = crate::platform_clients::landx::resolve_fanout(
+            "ams1.landx.dev",
+            LANDX_UDP_HOSTS,
+            "region",
+        )
+        .unwrap();
+        assert_eq!(
+            list,
+            vec!["ams1.landx.dev".to_string(), "ams2.landx.dev".to_string()]
+        );
+
+        let all = crate::platform_clients::landx::resolve_fanout(
+            "ams1.landx.dev",
+            LANDX_UDP_HOSTS,
+            "all",
+        )
+        .unwrap();
+        assert_eq!(all.len(), LANDX_UDP_HOSTS.len());
     }
 
     /// 常规区域映射。

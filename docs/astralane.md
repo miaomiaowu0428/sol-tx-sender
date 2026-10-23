@@ -33,8 +33,8 @@
 | `London` | `lon.gateway.astralane.io` | `63.254.168.71` | |
 
 - Global Edge：`https://edge.astralane.io/iris`（常量 `ASTRALANE_GLOBAL_ENDPOINT`）。
-- 官方建议**同时**广播到 Global Edge 和最近区域端点。本客户端不会自动双发；
-  需要时由调度层额外注册一个实例并覆盖 `endpoint`。
+- 官方建议**同时**广播到 Global Edge 和最近区域端点 —— 现在由客户端的
+  **多端点扇出**支持，见下面「多端点扇出」一节。
 - 支持 HTTPS；官方称直接用 IPv4 更快，并且只有 IPv4 支持 QUIC。
 
 `Region` 没有对应机房的回退：
@@ -68,6 +68,52 @@
 
 官方声称可用 `sendTransaction` / `sendBundle` / `sendIdeal` / `getNonce` /
 `sendPaladin` / `getHealth`；本仓库只实现了前两个，其余暂无对应 trait。
+
+## 多端点扇出（`ASTRALANE_FANOUT`）
+
+一个 `Astralane` 实例可以持有多个入口，`send_tx` 把**同一笔已签名交易**并发打到
+所有入口。
+
+### 为什么必须在 sender 层做
+
+扇出的价值在于「**同一个签名下出现 N 个 bundle**」。这要求交易字节只有一份：
+
+| 做法 | 结果 |
+| --- | --- |
+| **sender 层扇出**（本实现） | build 一次 → 同一份 `tx_base64` 发 N 个入口 → **同签名 / N 个 bundle** |
+| dispatcher 层多注册几个实例 | 每次 `fire_client` 都重新 build，而 Astralane 的 tip 账户是**随机**选的（`get_tip_address`）→ **N 个不同签名** → Inspector 里 N 行、每行 1 个 bundle |
+
+所以扇出属于传输层（sender），路由/选地区属于 dispatcher（`RegionPlan` /
+`RegionPool` 保持「按 leader 地区选一个入口」的语义不变）。
+
+### 配置
+
+| 值 | 含义 |
+| --- | --- |
+| 空 / 未设置 | **默认 `edge`**（扇出开启） |
+| `off` / `0` | 关闭扇出（只发主入口） |
+| `edge` | 只加 Global Edge —— **官方推荐**（edge + 最近机房，共 2 个入口） |
+| `all` | 全部 12 个入口（11 机房 + edge） |
+| `edge,fr2` | 逗号分隔别名，见常量 `ASTRALANE_HOSTS` |
+| `http://...` | 也可以直接写完整 URL |
+
+别名：`edge` `fr` `fr2` `la` `jp` `ny` `ams` `ams2` `lim` `sg` `lit` `lon`。
+写错别名**会报错并回退单入口**（打 warn），不会静默生效。
+
+### ⚠️ 代价：TPS 与成功率
+
+- Astralane 的 TPS 限额是**按账号**的（Free 5 / VIP1 20 / VIP2 40 / VIP3 80 单笔）。
+  打到 N 个入口 = 占用 N 份配额，有效吞吐直接除以 N。
+- N 份里**只有 1 份会落地**，bundle 成功率会被按比例拉低；官方明确说过成功率过低
+  会**临时关闭 bundle 权限**并触发 QoS 惩罚。
+
+**默认值就是 `edge`**（2 个入口）。想更激进可 `edge,fr2` 之类；想安静下来设 `ASTRALANE_FANOUT=off`。
+
+### 保活
+
+`TxDispacher::keep_alive_targets` 会为**扇出打开的每个入口**都注册保活探测，
+避免额外入口在第一次要发交易时才现做 DNS + TCP + TLS。
+
 
 ## QUIC 端点
 

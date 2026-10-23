@@ -121,3 +121,43 @@ Content-Type: application/json
 
 `endpoint_keep_alive()` 会探测所有 HTTP 平台端点。
 LandX 使用官方健康检查 `GET http://<host>/ping`（返回 `ok`）。
+
+## 多入口扇出（`LANDX_FANOUT`）
+
+有些城市有多台机器（不同 provider）。`send_tx` 可以把**同一笔已签名交易**并发打到
+同城的多台机器：交易字节只有一份 ⇒ 签名相同 ⇒ 服务端看到的是「同一笔交易走了 N 台」。
+
+| 城市 | 机器 | HTTP | UDP |
+| --- | --- | --- | --- |
+| Amsterdam | `ams1`(TeraSwitch) / `ams2`(Cherry) | ✅ 2 台 | ✅ 2 台 |
+| Frankfurt | `fra1`(TeraSwitch) / `fra2`(Allnodes) / `fra3`(Cherry) | ✅ 只有 `fra1` | ✅ 3 台 |
+| 其余 | 单台 | 1 | 1 |
+
+> 所以**法兰克福的扇出只对 UDP 有意义**：`fra2`/`fra3` 是仅 UDP 机房，
+> 给 HTTP 通道写 `fra2` 会直接报错（不会静默少发）。
+
+### 配置
+
+| 值 | 含义 |
+| --- | --- |
+| 空 / 未设置 | **默认 `region`**（同城多机器开启） |
+| `off` / `0` | 关闭扇出（只发主入口） |
+| `region` / `auto` | 主入口 + **同城其他机器**（推荐） |
+| `all` | 该通道支持的全部机房（跨城，一般不建议） |
+| `ams2,fra2` | 逗号分隔，写短名或完整 host 都行 |
+
+HTTP 与 UDP 两个客户端**各自**读同一个 `LANDX_FANOUT`，按自己的能力过滤：
+法兰克福 → HTTP 拿到 `fra1`（1 台），UDP 拿到 `fra1,fra2,fra3`（3 台）。
+
+### 保活
+
+`TxDispacher::keep_alive_targets` 会为 HTTP 扇出的每个入口都注册 `/<host>/ping`
+探测，避免额外入口在第一次发交易时才现做 DNS + TCP。
+
+### 环境变量
+
+| 变量 | 必需 | 作用 |
+| --- | --- | --- |
+| `LANDX_API_KEY` | 是 | 必须**恰好 12 字节**（UDP 直接拼进包体） |
+| `LANDX_FANOUT` | 否 | 见上表 |
+| `LANDX_UDP_COPIES` | 否 | UDP 每包发几份（1~4，默认 1），抗丢包用 |

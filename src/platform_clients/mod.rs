@@ -10,7 +10,7 @@ use std::time::Duration;
 use tokio::time::sleep;
 use utils::log_time;
 
-use crate::constants::HTTP_CLIENT;
+use crate::constants::{HTTP_CLIENT, REGION};
 use log::info;
 use solana_sdk::hash::Hash;
 use solana_sdk::instruction::Instruction;
@@ -38,6 +38,89 @@ pub mod stellium;
 pub mod syncro;
 pub mod temporal;
 pub mod zeroslot;
+
+/// 通用「同城多机器」扇出解析。
+///
+/// 各平台都有「一个城市多台机器」的情况（LandX 的 ams1/ams2、Node1 的 fra/fra2…），
+/// 这里把「主入口 + 追加哪些」的解析统一掉，各平台只提供自己的 host 表和同城分组。
+///
+/// # 参数
+///
+/// - `primary`：当前地区的主入口裸 host
+/// - `all_hosts`：**该通道**支持的 host 全集（HTTP 与 UDP/QUIC 可能不同，用它校验别名）
+/// - `city_of`：host → 同城机器列表（没有分组就返回空切片）
+/// - `spec`：`LANDX_FANOUT` / `NODEONE_FANOUT` 这类环境变量的值
+///
+/// # spec 语义
+///
+/// | 值 | 含义 |
+/// | --- | --- |
+/// | 空 / `off` / `0` | 只发主入口 |
+/// | `region` / `auto` | 主入口 + **同城其他机器** |
+/// | `all` | 主入口 + 该通道全部 host（跨城，一般不建议） |
+/// | `ams2,fra2` | 逗号分隔，短名或完整 host 都行 |
+///
+/// 返回值：主入口在前、已去重。拼错别名会**报错**（而不是静默少发）。
+pub fn resolve_host_fanout(
+    primary: &str,
+    all_hosts: &[&'static str],
+    city_of: impl Fn(&str) -> &'static [&'static str],
+    spec: &str,
+) -> Result<Vec<String>, String> {
+    let spec = spec.trim();
+    let mut out = vec![primary.to_string()];
+
+    fn push(host: &str, out: &mut Vec<String>) {
+        if !out.iter().any(|h| h == host) {
+            out.push(host.to_string());
+        }
+    }
+
+    if spec.is_empty() || spec.eq_ignore_ascii_case("off") || spec == "0" {
+        return Ok(out);
+    }
+
+    if spec.eq_ignore_ascii_case("region") || spec.eq_ignore_ascii_case("auto") {
+        for host in city_of(primary) {
+            if all_hosts.contains(host) {
+                push(host, &mut out);
+            }
+        }
+        return Ok(out);
+    }
+
+    if spec.eq_ignore_ascii_case("all") {
+        for host in all_hosts {
+            push(host, &mut out);
+        }
+        return Ok(out);
+    }
+
+    for token in spec.split(',').map(|t| t.trim()).filter(|t| !t.is_empty()) {
+        // 完整 host 或短名（第一个 `.` 之前）；短名必须唯一命中，避免歧义。
+        let matched = if let Some(h) = all_hosts.iter().find(|h| **h == token) {
+            Some(*h)
+        } else {
+            let prefix = format!("{token}.");
+            let mut hits = all_hosts.iter().filter(|h| h.starts_with(&prefix));
+            match (hits.next(), hits.next()) {
+                (Some(only), None) => Some(*only),
+                _ => None,
+            }
+        };
+
+        let Some(host) = matched else {
+            let short: Vec<&str> = all_hosts.iter().filter_map(|h| h.split('.').next()).collect();
+            return Err(format!(
+                "`{token}` 不是该通道可用的 host（可用: {}；也可写完整 host {}）",
+                short.join(", "),
+                all_hosts.join(", ")
+            ));
+        };
+        push(host, &mut out);
+    }
+    Ok(out)
+}
 
 /// **把交易序列化成 Solana wire 格式**（这是发给各平台/RPC 的正确字节）。
 ///
@@ -366,17 +449,33 @@ impl KeepAliveTarget {
 /// - LandX / Helius 用官方 `/ping`；其余平台探测自身 endpoint。这里只关心
 ///   **origin 的 TCP/TLS 连接是否热**，所以 401/404/405 都算「通了」。
 pub fn keep_alive_targets() -> Vec<KeepAliveTarget> {
-    let raw = vec![
-        KeepAliveTarget::new("Astralane", astralane::Astralane::get_endpoint()),
+    let mut raw = Vec::new();
+
+    // ── 有扇出的平台：**每个入口都要保活** ────────────────────────────────
+    //
+    // 只保主入口的话，扇出打开后新增的入口（Astralane 的 Global Edge、Node1 的
+    // fra2、LandX 的 ams2/fra2/fra3）会在第一次真要发交易时才现做 DNS + TCP
+    // （+ TLS），正好落在最不能慢的那 400ms 里。
+    for ep in astralane::Astralane::endpoints_for(*REGION) {
+        raw.push(KeepAliveTarget::new("Astralane", ep));
+    }
+    // LandX 官方健康检查：GET http://<host>/ping -> "ok"
+    for base in landx::LandX::endpoints_for(*REGION) {
+        raw.push(KeepAliveTarget::new("LandX", format!("{base}/ping")));
+    }
+    // Node1 没有 /ping，探根路径即可（只要 TCP 热了就行）。
+    for base in nodeone::NodeOne::endpoints_for(*REGION) {
+        raw.push(KeepAliveTarget::new("NodeOne", base));
+    }
+
+    // ── 单入口平台 ────────────────────────────────────────────────────────
+    raw.extend(vec![
         KeepAliveTarget::new("Blockrazor", blockrazor::Blockrazor::get_endpoint()),
         // Helius 官方保活：GET http://<region>-sender.helius-rpc.com/ping
         // Max / SWQOS 共用 origin，下面按 URL 去重后每个地区只留一条。
         KeepAliveTarget::new("HeliusMax", helius_max::HeliusMax::get_ping_endpoint()),
         KeepAliveTarget::new("HeliusSwqos", helius_swqos::HeliusSwqos::get_ping_endpoint()),
         KeepAliveTarget::new("Jito", jito::Jito::get_endpoint()),
-        // LandX 官方健康检查：GET http://<host>/ping -> "ok"
-        KeepAliveTarget::new("LandX", landx::LandX::get_ping_endpoint()),
-        KeepAliveTarget::new("NodeOne", nodeone::NodeOne::get_endpoint()),
         KeepAliveTarget::new("Temporal", temporal::Temporal::get_endpoint()),
         KeepAliveTarget::new("ZeroSlot", zeroslot::ZeroSlot::get_endpoint()),
         KeepAliveTarget::new("FlashBlock", flash_block::FlashBlock::get_endpoint()),
@@ -384,7 +483,7 @@ pub fn keep_alive_targets() -> Vec<KeepAliveTarget> {
         KeepAliveTarget::new("Stellium", stellium::Stellium::get_endpoint()),
         KeepAliveTarget::new("EverStake", ever_stake::EverStake::get_endpoint()),
         KeepAliveTarget::new("Syncro", syncro::Syncro::get_endpoint()),
-    ];
+    ]);
     // 同一 origin 只探测一次（Helius Max / SWQOS 就是同一组 origin）。
     let mut seen = std::collections::HashSet::new();
     raw.into_iter()
@@ -505,6 +604,50 @@ async fn ping_once(target: &KeepAliveTarget) {
 mod keep_alive_tests {
     use super::*;
 
+    /// 扇出打开的入口必须全部出现在保活列表里，否则首包要现做 DNS+TCP。
+    #[test]
+    fn keep_alive_covers_every_fanout_endpoint() {
+        let targets = keep_alive_targets();
+
+        for ep in astralane::Astralane::endpoints_for(*REGION) {
+            assert!(
+                targets.iter().any(|t| t.url == ep),
+                "Astralane 缺少扇出入口保活: {ep}"
+            );
+        }
+        for base in landx::LandX::endpoints_for(*REGION) {
+            let want = format!("{base}/ping");
+            assert!(
+                targets.iter().any(|t| t.url == want),
+                "LandX 缺少扇出入口保活: {want}"
+            );
+        }
+        for base in nodeone::NodeOne::endpoints_for(*REGION) {
+            assert!(
+                targets.iter().any(|t| t.url == base),
+                "NodeOne 缺少扇出入口保活: {base}"
+            );
+        }
+    }
+
+    /// Node1 的保活 URL 必须与真正提交用的 origin 完全一致。
+    ///
+    /// 回归测试：曾经保活预热 `https://…:443`、提交却走 `http://…:80`，
+    /// 连接等于没保住。
+    #[test]
+    fn nodeone_keep_alive_matches_submit_scheme() {
+        let submit = nodeone::NodeOne::endpoints_for(*REGION);
+        assert_eq!(nodeone::NodeOne::get_endpoint(), submit[0]);
+
+        let targets = keep_alive_targets();
+        for ep in &submit {
+            assert!(
+                targets.iter().any(|t| t.url == *ep),
+                "保活与提交 origin 不一致，缺 {ep}"
+            );
+        }
+    }
+
     /// 保活列表不应包含空 URL，且每个平台名都不重复。
     #[test]
     fn test_keep_alive_targets_sane() {
@@ -514,12 +657,13 @@ mod keep_alive_tests {
             assert!(!t.url.trim().is_empty(), "{} 的保活 URL 为空", t.name);
             assert!(t.url.starts_with("http"), "{} 的保活 URL 不是 HTTP: {}", t.name, t.url);
         }
-        // 同一平台在同一 region 下只应出现一次
-        let mut names: Vec<&str> = targets.iter().map(|t| t.name).collect();
-        names.sort();
-        let before = names.len();
-        names.dedup();
-        assert_eq!(before, names.len(), "keep-alive 目标名重复: {names:?}");
+        // 扇出平台会有多个目标（同名多次是**预期**的），但 URL 不能重复：
+        // 同一 origin 只探测一次。
+        let mut urls: Vec<&str> = targets.iter().map(|t| t.url.as_str()).collect();
+        urls.sort();
+        let before = urls.len();
+        urls.dedup();
+        assert_eq!(before, urls.len(), "keep-alive URL 重复: {urls:?}");
         // LandX 必须在列表里，且走官方 /ping
         assert!(targets.iter().any(|t| t.name == "LandX" && t.url.ends_with("/ping")));
         // Helius 必须走官方 /ping，不能用提交端点 /fast 当保活

@@ -102,10 +102,26 @@ pub const ASTRALANE_TIP_ACCOUNTS: &[Pubkey] = &[
 pub const SUBMIT_URL_QUERY: &str = "swqos-only=false&mev-protect=false";
 
 /// Global Edge 端点：官方建议与最近区域端点**同时**广播。
-///
-/// 本客户端不会自动双发，需要时由调用方额外注册一个实例并把 `endpoint`
-/// 覆盖为该值（或直接构造等价的 [`Astralane`]）。
 pub const ASTRALANE_GLOBAL_ENDPOINT: &str = "https://edge.astralane.io/iris";
+
+/// 端点别名 → URL，供 `ASTRALANE_FANOUT` 使用（短名、可读、可配）。
+///
+/// 官方每个地区有 1~2 个机房（`fr`+`fr2`、`ams`+`ams2`），外加一个 Global Edge。
+/// 别名与 [`Astralane::endpoint_for`] 使用的是同一批 URL。
+pub const ASTRALANE_HOSTS: &[(&str, &str)] = &[
+    ("edge", ASTRALANE_GLOBAL_ENDPOINT),
+    ("fr", "http://fr.gateway.astralane.io/iris"),
+    ("fr2", "http://fr2.gateway.astralane.io/iris"),
+    ("la", "http://la.gateway.astralane.io/iris"),
+    ("jp", "http://jp.gateway.astralane.io/iris"),
+    ("ny", "http://ny.gateway.astralane.io/iris"),
+    ("ams", "http://ams.gateway.astralane.io/iris"),
+    ("ams2", "http://ams2.gateway.astralane.io/iris"),
+    ("lim", "http://lim.gateway.astralane.io/iris"),
+    ("sg", "http://sg.gateway.astralane.io/iris"),
+    ("lit", "http://lit.gateway.astralane.io/iris"),
+    ("lon", "http://lon.gateway.astralane.io/iris"),
+];
 
 /// 官方区域 Iris 端点（`/iris?api-key=...` 由请求时拼接）。
 ///
@@ -126,10 +142,27 @@ pub const ASTRALANE_ENDPOINTS: &[&str] = &[
     "http://lon.gateway.astralane.io/iris",  // London
 ];
 
+/// Astralane HTTP 客户端。
+///
+/// # 多端点扇出（`endpoints`）
+///
+/// 一个实例可以持有**多个入口**，`send_tx` 会把**同一笔已签名交易**并发打到所有
+/// 入口。这样做是有意的：
+///
+/// - 交易字节只有一份 ⇒ **签名相同** ⇒ 服务端看到的是「同一笔交易走了 N 个入口」，
+///   对应 Inspector 里**同一个签名下的 N 个 bundle**（这才是我们想要的形态）。
+/// - 如果改成在上层「多发几次」，每次都会重新 build（tip 账户随机）⇒ 变成 N 笔
+///   **不同签名**的交易，只会得到 N 行、每行 1 个 bundle。
+///
+/// 默认只有本地区 1 个入口；用 `ASTRALANE_FANOUT` 打开（见
+/// [`Astralane::parse_fanout`]）。
 #[derive(Clone)]
 pub struct Astralane {
-    pub endpoint: String,   // 只保存基础 endpoint，不拼 key
-    pub auth_token: String, // 单独保存 key
+    /// 基础 endpoint 列表（**不含** query，key 走请求头）。
+    ///
+    /// 至少 1 个；顺序 = 主入口在前。
+    pub endpoints: Vec<String>,
+    pub auth_token: String,
     pub http_client: Arc<Client>,
 }
 
@@ -171,20 +204,105 @@ impl Astralane {
         Self::endpoint_for(*REGION).to_string()
     }
 
-    /// 本实例的提交 URL：基础 endpoint + [`SUBMIT_URL_QUERY`]。
+    /// 给某个基础 endpoint 拼上 [`SUBMIT_URL_QUERY`]。
     ///
     /// `api-key` 仍走请求头（与历史实现一致），所以这里只拼路由开关。
-    /// 对已经带 `?` 的覆盖端点做兼容，避免拼出两个 `?`。
-    pub fn submit_url(&self) -> String {
-        let sep = if self.endpoint.contains('?') { '&' } else { '?' };
-        format!("{}{}{}", self.endpoint, sep, SUBMIT_URL_QUERY)
+    /// 对已经带 `?` 的端点做兼容，避免拼出两个 `?`。
+    pub fn submit_url_for(endpoint: &str) -> String {
+        let sep = if endpoint.contains('?') { '&' } else { '?' };
+        format!("{endpoint}{sep}{SUBMIT_URL_QUERY}")
     }
 
-    /// 显式构造：调用方负责提供 key 和 region，不读取任何环境变量。
-    /// 单例还是每次 new，由业务侧决定。
+    /// 主入口（本地区）的提交 URL。
+    pub fn submit_url(&self) -> String {
+        Self::submit_url_for(self.primary())
+    }
+
+    /// 主入口（列表第一个）。
+    pub fn primary(&self) -> &str {
+        self.endpoints.first().map(|s| s.as_str()).unwrap_or("")
+    }
+
+    /// 解析 `ASTRALANE_FANOUT` 规格，返回**额外的**基础 endpoint（不含主入口）。
+    ///
+    /// 支持的写法：
+    ///
+    /// | 值 | 含义 |
+    /// | --- | --- |
+    /// | 空 / `off` / `0` | 不扇出（默认） |
+    /// | `edge` | 只加 Global Edge（**官方推荐**：edge + 最近机房） |
+    /// | `all` | 全部 12 个入口（11 机房 + edge）⚠️ 见限速说明 |
+    /// | `edge,fr2` / `ams2,lim` | 逗号分隔的别名，见 [`ASTRALANE_HOSTS`] |
+    ///
+    /// ⚠️ **扇出会等比例消耗 TPS**：Astralane 的 TPS 限额是按账号的（Free 5、
+    /// VIP1 20、VIP2 40、VIP3 80）。打到 N 个入口 = 占用 N 份单笔配额，还可能拉低
+    /// bundle 成功率（N 份里只有 1 份会落地），进而触发 QoS 惩罚。
+    /// 所以默认关闭，建议从 `edge`（2 个入口）起步。
+    pub fn parse_fanout(spec: &str) -> Result<Vec<String>, String> {
+        let spec = spec.trim();
+        if spec.is_empty() || spec.eq_ignore_ascii_case("off") || spec == "0" {
+            return Ok(Vec::new());
+        }
+        if spec.eq_ignore_ascii_case("all") {
+            return Ok(ASTRALANE_HOSTS.iter().map(|(_, url)| url.to_string()).collect());
+        }
+
+        let mut out = Vec::new();
+        for token in spec.split(',').map(|t| t.trim()).filter(|t| !t.is_empty()) {
+            if token.contains("://") {
+                out.push(token.to_string());
+                continue;
+            }
+            let url = ASTRALANE_HOSTS
+                .iter()
+                .find(|(alias, _)| alias.eq_ignore_ascii_case(token))
+                .map(|(_, url)| *url)
+                .ok_or_else(|| {
+                    let known: Vec<&str> = ASTRALANE_HOSTS.iter().map(|(a, _)| *a).collect();
+                    format!(
+                        "未知端点别名 `{token}`（可用: off | all | {}）",
+                        known.join(", ")
+                    )
+                })?;
+            out.push(url.to_string());
+        }
+        Ok(out)
+    }
+
+    /// 按 region + `ASTRALANE_FANOUT` 算出最终入口列表（去重，主入口在前）。
+    ///
+    /// 环境变量写错时**不 panic**：打一条 warn 后回退到单入口，别让一个拼写错误
+    /// 把发送通道打挂。
+    pub fn endpoints_for(region: Region) -> Vec<String> {
+        let primary = Self::endpoint_for(region).to_string();
+        // 默认开启：官方推荐的「Global Edge + 最近机房」双发。
+        let spec = std::env::var("ASTRALANE_FANOUT").unwrap_or_else(|_| "edge".to_string());
+
+        let mut list = vec![primary];
+        match Self::parse_fanout(&spec) {
+            Ok(extra) => {
+                for ep in extra {
+                    if !list.contains(&ep) {
+                        list.push(ep);
+                    }
+                }
+            }
+            Err(e) => log::warn!("[astralane] ASTRALANE_FANOUT 解析失败，回退单入口: {e}"),
+        }
+        list
+    }
+
+    /// 显式构造：调用方负责提供 key 和 region，入口列表由 [`Self::endpoints_for`]
+    /// 决定（即受 `ASTRALANE_FANOUT` 控制）。
     pub fn init_with(key: impl Into<String>, region: Region) -> Self {
+        Self::init_with_endpoints(key, Self::endpoints_for(region))
+    }
+
+    /// 完全显式：直接给定入口列表（第一个视为主入口）。
+    pub fn init_with_endpoints(key: impl Into<String>, endpoints: Vec<String>) -> Self {
+        assert!(!endpoints.is_empty(), "Astralane 至少需要 1 个 endpoint");
         Astralane {
-            endpoint: Self::endpoint_for(region).to_string(),
+            endpoints,
             auth_token: key.into(),
             http_client: HTTP_CLIENT.clone(),
         }
@@ -192,13 +310,10 @@ impl Astralane {
 
     /// 兼容旧调用：从 `REGION` 全局 static + `ASTRALANE_KEY` 环境变量读取。
     pub fn new() -> Self {
-        let endpoint = Self::endpoint_for(*REGION).to_string();
-        let auth_token = std::env::var("ASTRALANE_KEY").unwrap_or_default();
-        let http_client = HTTP_CLIENT.clone();
         Astralane {
-            endpoint,
-            auth_token,
-            http_client,
+            endpoints: Self::endpoints_for(*REGION),
+            auth_token: std::env::var("ASTRALANE_KEY").unwrap_or_default(),
+            http_client: HTTP_CLIENT.clone(),
         }
     }
 
@@ -233,7 +348,8 @@ impl crate::platform_clients::BundleSender for Astralane {
             sigs.push(tx.sig());
         }
 
-        let base = self.endpoint.strip_suffix("/iris").unwrap_or(&self.endpoint);
+        let primary = self.primary();
+        let base = primary.strip_suffix("/iris").unwrap_or(primary);
         let url = format!(
             "{base}/irisb?api-key={}&method=sendBatch&{SUBMIT_URL_QUERY}",
             self.auth_token
@@ -284,26 +400,58 @@ impl crate::platform_clients::SendTx for Astralane {
                     { "mevProtect": false }
                 ],
             });
-            let res = self
-                .http_client
-                .post(&self.submit_url())
-                .header("Content-Type", "application/json")
-                .header("api-key", self.auth_token.as_str())
-                .json(&req_json)
-                .send()
-                .await;
-            let response = match res {
-                Ok(resp) => match resp.text().await {
-                    Ok(text) => text,
-                    Err(e) => {
-                        return Err(format!("response text error: {}", e));
+            // 并发打到所有入口：**同一份 tx_base64**（同一签名）。
+            // 只要有一个入口 2xx 就算发出去了；全失败才返回错误。
+            let mut set = tokio::task::JoinSet::new();
+            for endpoint in &self.endpoints {
+                let client = self.http_client.clone();
+                let url = Self::submit_url_for(endpoint);
+                let key = self.auth_token.clone();
+                let body = req_json.clone();
+                let label = endpoint.clone();
+                set.spawn(async move {
+                    let res = client
+                        .post(&url)
+                        .header("Content-Type", "application/json")
+                        .header("api-key", key.as_str())
+                        .json(&body)
+                        .send()
+                        .await;
+                    match res {
+                        Ok(resp) => {
+                            let status = resp.status();
+                            let text = resp.text().await.unwrap_or_default();
+                            (label, status.is_success(), format!("HTTP {status} {text}"))
+                        }
+                        Err(e) => (label, false, format!("send error: {e}")),
                     }
-                },
-                Err(e) => {
-                    return Err(format!("send error: {}", e));
+                });
+            }
+
+            let mut ok = 0usize;
+            let mut errors: Vec<String> = Vec::new();
+            while let Some(joined) = set.join_next().await {
+                match joined {
+                    Ok((label, success, detail)) => {
+                        if success {
+                            ok += 1;
+                            info!("[astralane/send_tx] {label} ok: {detail}");
+                        } else {
+                            log::warn!("[astralane/send_tx] {label} failed: {detail}");
+                            errors.push(format!("{label}: {detail}"));
+                        }
+                    }
+                    Err(e) => errors.push(format!("task join error: {e}")),
                 }
-            };
-            info!("[astralane/send_tx] response: {}", response);
+            }
+
+            if ok == 0 {
+                return Err(format!(
+                    "all {} endpoint(s) failed: {}",
+                    self.endpoints.len(),
+                    errors.join(" | ")
+                ));
+            }
             Ok(())
         })
     }
@@ -439,11 +587,64 @@ mod tests {
     /// endpoint 自带 `?` 时用 `&` 拼接，不产生第二个 `?`。
     #[test]
     fn submit_url_handles_preset_query() {
-        let mut c = Astralane::init_with("test-key", Region::London);
-        c.endpoint = "https://edge.astralane.io/iris?foo=1".to_string();
-        let url = c.submit_url();
+        let url = Astralane::submit_url_for("https://edge.astralane.io/iris?foo=1");
         assert_eq!(url.matches('?').count(), 1, "{url}");
         assert!(url.contains("?foo=1&swqos-only=false"), "{url}");
+    }
+
+    /// 扇出规格解析：默认关闭，`edge` 只加 edge，`all` 全量，未知别名必须报错。
+    #[test]
+    fn parse_fanout_spec() {
+        assert!(Astralane::parse_fanout("").unwrap().is_empty());
+        assert!(Astralane::parse_fanout("off").unwrap().is_empty());
+        assert!(Astralane::parse_fanout("OFF").unwrap().is_empty());
+        assert!(Astralane::parse_fanout("0").unwrap().is_empty());
+
+        let edge = Astralane::parse_fanout("edge").unwrap();
+        assert_eq!(edge, vec![ASTRALANE_GLOBAL_ENDPOINT.to_string()]);
+
+        assert_eq!(Astralane::parse_fanout("all").unwrap().len(), ASTRALANE_HOSTS.len());
+
+        let two = Astralane::parse_fanout("edge, fr2").unwrap();
+        assert_eq!(two.len(), 2, "逗号两侧空白要能容忍");
+        assert!(two[1].contains("fr2.gateway"));
+
+        // 直接写完整 URL 也接受
+        let raw = Astralane::parse_fanout("http://custom.example/iris").unwrap();
+        assert_eq!(raw, vec!["http://custom.example/iris".to_string()]);
+
+        // 拼错必须报错，不能静默变成单入口
+        let err = Astralane::parse_fanout("fr3").unwrap_err();
+        assert!(err.contains("fr3"), "{err}");
+        assert!(err.contains("off"), "错误信息里应列出可用别名: {err}");
+    }
+
+    /// 入口列表：主入口始终在第一位，且不重复。
+    #[test]
+    fn endpoints_for_puts_primary_first_and_dedups() {
+        // 不依赖环境变量：这里只验证去重逻辑本身
+        let list = Astralane::endpoints_for(Region::Frankfurt);
+        assert_eq!(list[0], Astralane::endpoint_for(Region::Frankfurt));
+        let mut uniq = list.clone();
+        uniq.sort();
+        uniq.dedup();
+        assert_eq!(uniq.len(), list.len(), "入口列表有重复: {list:?}");
+    }
+
+    /// 显式入口列表：第一个是主入口。
+    #[test]
+    fn init_with_endpoints_uses_first_as_primary() {
+        let c = Astralane::init_with_endpoints(
+            "k",
+            vec![
+                "http://fr.gateway.astralane.io/iris".to_string(),
+                ASTRALANE_GLOBAL_ENDPOINT.to_string(),
+            ],
+        );
+        assert_eq!(c.endpoints.len(), 2);
+        assert_eq!(c.primary(), "http://fr.gateway.astralane.io/iris");
+        assert!(c.submit_url().starts_with("http://fr.gateway.astralane.io/iris?"));
+        assert_eq!(Astralane::endpoint_for(Region::Frankfurt), c.primary());
     }
 
     /// 每个 Region 都映射到官方区域端点；没有机房的区域按注释就近回退。

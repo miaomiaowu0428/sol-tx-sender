@@ -58,9 +58,47 @@ pub const NODEONE_ENDPOINT: &[&str] = &[
     "https://dub.node1.me",  // Dublin
 ];
 
+/// 官方 8 个机房的**裸 host**（fanout 解析用）。
+///
+/// 官网对每个机房同时提供 `https://` 与 `http://`；`http://` 少一次 TLS 往返，
+/// 所以默认走 http（可用 `NODEONE_SCHEME=https` 切回）。
+pub const NODEONE_HOSTS: &[&str] = &[
+    "ny.node1.me",
+    "ams.node1.me",
+    "fra.node1.me",
+    "lon.node1.me",
+    "tk.node1.me",
+    "sgp.node1.me",
+    "fra2.node1.me",
+    "dub.node1.me",
+];
+
+/// **同城多机器**：法兰克福有 `fra` + `fra2` 两台（不同机器），其余城市单台。
+pub const NODEONE_CITY_GROUPS: &[(&str, &[&str])] = &[(
+    "fra.node1.me",
+    &["fra.node1.me", "fra2.node1.me"],
+)];
+
+/// 取某个 host 所在城市的全部机器（没有分组返回空切片）。
+pub fn city_group(host: &str) -> &'static [&'static str] {
+    NODEONE_CITY_GROUPS
+        .iter()
+        .find(|(key, _)| *key == host)
+        .map(|(_, hosts)| *hosts)
+        .unwrap_or(&[])
+}
+
+/// Node1 HTTP 交易发送客户端。
+///
+/// # 多入口扇出（`endpoints`）
+///
+/// 可以持有多个入口（同城多机器），`send_tx` 把**同一笔已签名交易**并发打到所有入口。
+/// 由环境变量 `NODEONE_FANOUT` 控制（默认 `region`），见
+/// [`crate::platform_clients::resolve_host_fanout`]。
 #[derive(Clone)]
 pub struct NodeOne {
-    pub endpoint: String,
+    /// 提交 URL 列表（含 scheme），主入口在前。
+    pub endpoints: Vec<String>,
     pub auth_token: String,
     pub http_client: Arc<Client>,
 }
@@ -91,26 +129,64 @@ impl NodeOne {
         }
     }
 
+    /// 本机地区的主入口 URL —— **必须和真正提交用的 scheme 一致**。
+    ///
+    /// 历史坑：这里曾直接返回 `endpoint_for()` 的 `https://` 常量，而提交已经改成
+    /// 默认 `http://`（见 [`Self::scheme`]），于是保活一直在预热 443/TLS，
+    /// 真正发交易却走 80 —— 连接根本没被保住。
     pub fn get_endpoint() -> String {
-        Self::endpoint_for(*REGION).to_string()
+        format!("{}://{}", Self::scheme(), Self::host_for(*REGION))
+    }
+
+    /// 裸 host（去掉 scheme）→ 由 [`Self::endpoint_for`] 反推。
+    pub fn host_for(region: Region) -> &'static str {
+        Self::endpoint_for(region)
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+    }
+
+    /// 提交用的 scheme：默认 `http`（少一次 TLS），`NODEONE_SCHEME=https` 可切回。
+    pub fn scheme() -> &'static str {
+        match std::env::var("NODEONE_SCHEME").as_deref() {
+            Ok(v) if v.eq_ignore_ascii_case("https") => "https",
+            _ => "http",
+        }
+    }
+
+    /// 按 region + `NODEONE_FANOUT` 算出最终提交 URL 列表。
+    ///
+    /// 默认 `region`：法兰克福会同时打 `fra` 和 `fra2` 两台机器。
+    pub fn endpoints_for(region: Region) -> Vec<String> {
+        let primary = Self::host_for(region);
+        let spec = std::env::var("NODEONE_FANOUT").unwrap_or_else(|_| "region".to_string());
+        let scheme = Self::scheme();
+
+        match crate::platform_clients::resolve_host_fanout(primary, NODEONE_HOSTS, city_group, &spec) {
+            Ok(hosts) => hosts.into_iter().map(|h| format!("{scheme}://{h}")).collect(),
+            Err(e) => {
+                log::warn!("[node1] NODEONE_FANOUT 解析失败，回退单入口: {e}");
+                vec![format!("{scheme}://{primary}")]
+            }
+        }
+    }
+
+    /// 主入口。
+    pub fn primary(&self) -> &str {
+        self.endpoints.first().map(|s| s.as_str()).unwrap_or("")
     }
 
     pub fn new() -> Self {
-        let endpoint = Self::get_endpoint();
-        let auth_token = std::env::var("NODEONE_KEY").unwrap_or_default();
-        let http_client = HTTP_CLIENT.clone();
         NodeOne {
-            endpoint,
-            auth_token,
-            http_client,
+            endpoints: Self::endpoints_for(*REGION),
+            auth_token: std::env::var("NODEONE_KEY").unwrap_or_default(),
+            http_client: HTTP_CLIENT.clone(),
         }
     }
 
     /// 显式构造：调用方负责提供 key 和 region，不读取任何环境变量。
     pub fn init_with(key: impl Into<String>, region: Region) -> Self {
-        let endpoint = Self::endpoint_for(region).to_string();
         NodeOne {
-            endpoint,
+            endpoints: Self::endpoints_for(region),
             auth_token: key.into(),
             http_client: HTTP_CLIENT.clone(),
         }
@@ -122,30 +198,66 @@ impl crate::platform_clients::SendTx for NodeOne {
     async fn send_tx(&self, tx: &VersionedTransaction) -> Result<(), String> {
         log_time!("node1 send: ", {
             let tx_base64 = tx.to_base64().map_err(|e| e.to_string())?;
-            let res = self
-                .http_client
-                .post(&self.endpoint)
-                .header("Content-Type", "application/json")
-                .header("api-key", self.auth_token.as_str())
-                .json(&json! ({
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "sendTransaction",
-                    "params": [tx_base64],
-                }))
-                .send()
-                .await;
-            let response = match res {
-                Ok(resp) => match resp.text().await {
-                    Ok(text) => text,
-                    Err(e) => return Err(format!("response text error: {}", e)),
-                },
-                Err(e) => {
-                    log::error!("send error: {:?}", e);
-                    return Err(format!("send error: {}", e));
+            // 同一份 tx_base64 并发打到所有入口（同签名）。
+            let body = json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "sendTransaction",
+                "params": [
+                    tx_base64,
+                    { "encoding": "base64", "skipPreflight": true }
+                ],
+            });
+
+            let mut set = tokio::task::JoinSet::new();
+            for endpoint in &self.endpoints {
+                let client = self.http_client.clone();
+                let url = endpoint.clone();
+                let key = self.auth_token.clone();
+                let body = body.clone();
+                set.spawn(async move {
+                    let res = client
+                        .post(&url)
+                        .header("Content-Type", "application/json")
+                        .header("api-key", key.as_str())
+                        .json(&body)
+                        .send()
+                        .await;
+                    match res {
+                        Ok(resp) => {
+                            let status = resp.status();
+                            let text = resp.text().await.unwrap_or_default();
+                            (url, status.is_success(), format!("HTTP {status} {text}"))
+                        }
+                        Err(e) => (url, false, format!("send error: {e}")),
+                    }
+                });
+            }
+
+            let mut ok = 0usize;
+            let mut errors: Vec<String> = Vec::new();
+            while let Some(joined) = set.join_next().await {
+                match joined {
+                    Ok((label, success, detail)) => {
+                        if success {
+                            ok += 1;
+                            info!("node1: {label} ok: {detail}");
+                        } else {
+                            log::warn!("[node1] {label} failed: {detail}");
+                            errors.push(format!("{label}: {detail}"));
+                        }
+                    }
+                    Err(e) => errors.push(format!("task join error: {e}")),
                 }
-            };
-            info!("node1: {}", response);
+            }
+
+            if ok == 0 {
+                return Err(format!(
+                    "all {} node1 endpoint(s) failed: {}",
+                    self.endpoints.len(),
+                    errors.join(" | ")
+                ));
+            }
             Ok(())
         })
     }
@@ -174,6 +286,63 @@ impl crate::platform_clients::BuildTx for NodeOne {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 官方 8 个机房都在 host 表里，且覆盖 `endpoint_for` 的所有返回值。
+    #[test]
+    fn host_table_covers_all_regions() {
+        assert_eq!(NODEONE_HOSTS.len(), 8);
+        let mut uniq = NODEONE_HOSTS.to_vec();
+        uniq.sort();
+        uniq.dedup();
+        assert_eq!(uniq.len(), 8, "NODEONE_HOSTS 有重复");
+
+        for r in Region::ALL {
+            let host = NodeOne::host_for(*r);
+            assert!(NODEONE_HOSTS.contains(&host), "{r:?} → {host} 不在 host 表里");
+            assert!(!host.contains("://"), "host_for 应返回裸 host: {host}");
+        }
+    }
+
+    /// 法兰克福同城的两台机器（fra + fra2）必须能被 `region` 扇出同时选中。
+    #[test]
+    fn frankfurt_city_group_has_two_machines() {
+        let list = crate::platform_clients::resolve_host_fanout(
+            "fra.node1.me",
+            NODEONE_HOSTS,
+            city_group,
+            "region",
+        )
+        .unwrap();
+        assert_eq!(
+            list,
+            vec!["fra.node1.me".to_string(), "fra2.node1.me".to_string()]
+        );
+
+        // 单机房城市扇出后仍然只有自己
+        let ams = crate::platform_clients::resolve_host_fanout(
+            "ams.node1.me",
+            NODEONE_HOSTS,
+            city_group,
+            "region",
+        )
+        .unwrap();
+        assert_eq!(ams, vec!["ams.node1.me".to_string()]);
+    }
+
+    /// 默认配置下至少有一个入口，且 scheme 是 http（少一次 TLS）。
+    #[test]
+    fn endpoints_default_scheme_and_nonempty() {
+        let eps = NodeOne::endpoints_for(Region::Frankfurt);
+        assert!(!eps.is_empty());
+        for ep in &eps {
+            assert!(
+                ep.starts_with("http://") || ep.starts_with("https://"),
+                "{ep}"
+            );
+            assert!(ep.contains("node1.me"), "{ep}");
+        }
+        assert_eq!(eps[0], format!("{}://fra.node1.me", NodeOne::scheme()));
+    }
 
     /// 官方 24 个 tip 地址，全部唯一且非空（防止复制粘贴漏改/重复）。
     #[test]

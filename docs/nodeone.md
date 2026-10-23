@@ -98,3 +98,39 @@ nodeone_quic = []
 - 单笔最低 tip：`100_000` lamports（与 HTTP 通道一致，见
   `NodeOneQuic::MIN_TIP_AMOUNT_TX`）。
 - 24 个官方 tip 账户随机选取（`NODEONE_TIP_ACCOUNTS`），与 HTTP 通道共用。
+
+## 多入口扇出（`NODEONE_FANOUT`）
+
+官网对 8 个机房同时提供 `https://` 与 `http://`。HTTP 通道支持**同城多机器**
+并发投递：同一份已签名交易同时打到多台机器（签名相同）。
+
+| 城市 | 机器 | 说明 |
+| --- | --- | --- |
+| Frankfurt | `fra` + `fra2` | **同城两台**，`region` 扇出会同时打 |
+| Amsterdam / NewYork / London / Tokyo / Singapore / Dublin | 各 1 台 | 扇出后仍是 1 台 |
+
+### 配置
+
+| 值 | 含义 |
+| --- | --- |
+| 空 / 未设置 | **默认 `region`**（法兰克福 = fra + fra2） |
+| `off` / `0` | 关闭扇出 |
+| `region` / `auto` | 主入口 + 同城其他机器 |
+| `all` | 全部 8 个机房（跨城，一般不建议） |
+| `fra2` | 逗号分隔，短名或完整 host 都行 |
+
+### scheme
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `NODEONE_SCHEME` | **`http`** | 官网两种都提供；`http` 少一次 TLS 往返。设 `https` 可切回 |
+
+### ⚠️ 最低 tip 待确认（重要）
+
+官网原文：**"include a tip of at least 0.001 SOL"**（= 1,000,000 lamports）。
+
+而本仓库 `NodeOne::MIN_TIP_AMOUNT_TX` 目前是 **100_000**（0.0001 SOL），**比官方
+最低要求低 10 倍**。如果调用方没有显式给足 tip，`opt_tip` 只会保到
+`100_000 × 1.02 = 102_000`，低于官方门槛 → 交易很可能不被处理。
+
+在确认前请**显式传够 tip**（≥ 1,000,000），或把常量改成 `1_000_000`。
