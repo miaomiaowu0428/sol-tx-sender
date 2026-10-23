@@ -48,10 +48,23 @@
 
 ### HTTP 调用
 
-- 单笔：`sendTransaction`（`skipPreflight: true`、`mevProtect: true`），
+- 单笔：`sendTransaction`（`skipPreflight: true`、`mevProtect: false`），
   `api-key` 放在请求头。
 - Bundle：二进制 `IrisB sendBatch`，`POST /irisb?api-key=...&method=sendBatch`，
   body 为 `[u16 BE len][wire tx]...`。
+
+#### 路由开关：一律显式关闭
+
+两个可选参数都会**收窄**一条交易被分发的分支数量，本实现把它们**写死成 false**
+并显式拼在 URL 上（常量 `SUBMIT_URL_QUERY`），不依赖平台默认值：
+
+| 参数 | 位置 | 本仓库取值 | 置 true 的后果 |
+| --- | --- | --- | --- |
+| `swqos-only` | URL query | `false` | 只走 SWqoS（Jito / Paladin），丢掉 staked peer / TPU 直连分支 |
+| `mev-protect` / `mevProtect` | URL query + JSON `params[2]` | `false` | 收敛到受保护的私有路径子集 |
+
+历史坑：早期实现写的是 `mevProtect: true`，导致路由子集收敛、Jito 转发条数偏少。
+单测 `submit_url_explicitly_disables_route_narrowing_flags` 会挡住回退。
 
 官方声称可用 `sendTransaction` / `sendBundle` / `sendIdeal` / `getNonce` /
 `sendPaladin` / `getHealth`；本仓库只实现了前两个，其余暂无对应 trait。

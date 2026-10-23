@@ -15,6 +15,18 @@
 //! [`Region`] 选**单个**区域端点（Global Edge 见 [`ASTRALANE_GLOBAL_ENDPOINT`]），
 //! 需要双发时由调度层注册两个实例或直接覆盖 `endpoint` 字段。
 //!
+//! # 路由开关（重要）
+//!
+//! 官方两个可选参数都会**收窄**一条交易被分发的分支数：
+//!
+//! | 参数 | 官方默认 | 本客户端 | 置 true 的后果 |
+//! | --- | --- | --- | --- |
+//! | `swqos-only` | `false` | **显式 false** | 只走 SWqoS（Jito / Paladin），放弃 staked peer / TPU 直连 |
+//! | `mev-protect`（JSON `mevProtect`） | `false` | **显式 false** | 收敛到受保护的私有路径子集 |
+//!
+//! 两者都写死在 [`SUBMIT_URL_QUERY`] / 请求体里，**不依赖平台默认值**：默认值一旦
+//! 变更，路由分支会静默变少且没有任何日志。要"尽可能多走路由分支"就别改它们。
+//!
 //! # 最低 tip
 //!
 //! 官方按滚动 7 天 tip 量分档：Free 0.001 SOL、VIP 1/2 0.0001 SOL、VIP 3
@@ -75,6 +87,19 @@ pub const ASTRALANE_TIP_ACCOUNTS: &[Pubkey] = &[
     pubkey!("AStRAnpi6kFrKypragExgeRoJ1QnKH7pbSjLAKQVWUum"),
     pubkey!("ASTRaoF93eYt73TYvwtsv6fMWHWbGmMUZfVZPo3CRU9C"),
 ];
+
+/// 提交 URL 上**显式关闭**的路由收敛开关。
+///
+/// 官方两个可选参数都会**收窄**路由集合（即减少一条交易被分发的分支数）：
+///
+/// - `swqos-only`（默认 `false`）：置 `true` 时交易**只**走 SWQoS（Jito / Paladin），
+///   放弃 staked peer / TPU 直连等其它分支。
+/// - `mev-protect`（默认 `false`）：置 `true` 时走受保护的私有路径集合，同样是
+///   路由子集。
+///
+/// 本客户端的目标是「尽可能多路由分支」，所以两个参数都写成 `false`，并且
+/// **显式拼在 URL 上**而不是依赖平台默认值——避免对方默认值变更时静默减少分支。
+pub const SUBMIT_URL_QUERY: &str = "swqos-only=false&mev-protect=false";
 
 /// Global Edge 端点：官方建议与最近区域端点**同时**广播。
 ///
@@ -146,6 +171,15 @@ impl Astralane {
         Self::endpoint_for(*REGION).to_string()
     }
 
+    /// 本实例的提交 URL：基础 endpoint + [`SUBMIT_URL_QUERY`]。
+    ///
+    /// `api-key` 仍走请求头（与历史实现一致），所以这里只拼路由开关。
+    /// 对已经带 `?` 的覆盖端点做兼容，避免拼出两个 `?`。
+    pub fn submit_url(&self) -> String {
+        let sep = if self.endpoint.contains('?') { '&' } else { '?' };
+        format!("{}{}{}", self.endpoint, sep, SUBMIT_URL_QUERY)
+    }
+
     /// 显式构造：调用方负责提供 key 和 region，不读取任何环境变量。
     /// 单例还是每次 new，由业务侧决定。
     pub fn init_with(key: impl Into<String>, region: Region) -> Self {
@@ -200,7 +234,10 @@ impl crate::platform_clients::BundleSender for Astralane {
         }
 
         let base = self.endpoint.strip_suffix("/iris").unwrap_or(&self.endpoint);
-        let url = format!("{base}/irisb?api-key={}&method=sendBatch", self.auth_token);
+        let url = format!(
+            "{base}/irisb?api-key={}&method=sendBatch&{SUBMIT_URL_QUERY}",
+            self.auth_token
+        );
         let response = self
             .http_client
             .post(&url)
@@ -243,12 +280,13 @@ impl crate::platform_clients::SendTx for Astralane {
                         "encoding": "base64",
                         "skipPreflight": true,
                     },
-                    { "mevProtect": true }
+                    // ⚠️ 必须 false：true 会把路由收敛到受保护的私有子集（分支更少）。
+                    { "mevProtect": false }
                 ],
             });
             let res = self
                 .http_client
-                .post(&self.endpoint)
+                .post(&self.submit_url())
                 .header("Content-Type", "application/json")
                 .header("api-key", self.auth_token.as_str())
                 .json(&req_json)
@@ -294,7 +332,8 @@ impl crate::platform_clients::SendBundle for Astralane {
                 encoded_txs,
                 {
                     "encoding": "base64",
-                    "mevProtect": true,
+                    // ⚠️ 必须 false，理由同 send_tx：收敛路由 = 减少分支。
+                    "mevProtect": false,
                     "revertProtection": false
                 }
             ]
@@ -305,7 +344,7 @@ impl crate::platform_clients::SendBundle for Astralane {
 
         let res = self
             .http_client
-            .post(&self.endpoint)
+            .post(&self.submit_url())
             .header("Content-Type", "application/json")
             .header("api-key", self.auth_token.as_str())
             .body(request_body)
@@ -377,6 +416,34 @@ mod tests {
         uniq.sort();
         uniq.dedup();
         assert_eq!(uniq.len(), 17, "ASTRALANE_TIP_ACCOUNTS 存在重复地址");
+    }
+
+    /// 提交 URL 必须**显式**关掉两个收窄路由的开关。
+    ///
+    /// 一旦有人把 `swqos-only` / `mev-protect` 改回 true（或删掉），这条测试会红：
+    /// 它们都会让交易走更少的分支，与「尽可能多路由分支」的目标相反。
+    #[test]
+    fn submit_url_explicitly_disables_route_narrowing_flags() {
+        let c = Astralane::init_with("test-key", Region::Frankfurt);
+        let url = c.submit_url();
+        assert!(url.contains("swqos-only=false"), "{url}");
+        assert!(url.contains("mev-protect=false"), "{url}");
+        assert!(!url.contains("=true"), "{url}");
+        // 只有一个 '?'，且拼在 /iris 之后
+        assert_eq!(url.matches('?').count(), 1, "{url}");
+        assert!(url.starts_with("http://fr.gateway.astralane.io/iris?"), "{url}");
+        // api-key 走请求头，不能出现在 URL 里
+        assert!(!url.contains("api-key"), "{url}");
+    }
+
+    /// endpoint 自带 `?` 时用 `&` 拼接，不产生第二个 `?`。
+    #[test]
+    fn submit_url_handles_preset_query() {
+        let mut c = Astralane::init_with("test-key", Region::London);
+        c.endpoint = "https://edge.astralane.io/iris?foo=1".to_string();
+        let url = c.submit_url();
+        assert_eq!(url.matches('?').count(), 1, "{url}");
+        assert!(url.contains("?foo=1&swqos-only=false"), "{url}");
     }
 
     /// 每个 Region 都映射到官方区域端点；没有机房的区域按注释就近回退。
