@@ -31,6 +31,7 @@ pub mod jito;
 pub mod landx;
 pub mod nextblock;
 pub mod nodeone;
+pub mod nodeone_quic;
 pub mod stellium;
 pub mod syncro;
 pub mod temporal;
@@ -832,6 +833,7 @@ impl BuildV0Tx for harmonic::HarmonicBlockEngine {}
 impl BuildV0Tx for jito::Jito {}
 impl BuildV0Tx for landx::LandX {}
 impl BuildV0Tx for nodeone::NodeOne {}
+impl BuildV0Tx for nodeone_quic::NodeOneQuic {}
 impl BuildV0Tx for temporal::Temporal {}
 impl BuildV0Tx for zeroslot::ZeroSlot {}
 impl BuildV0Tx for flash_block::FlashBlock {}
@@ -1116,6 +1118,7 @@ impl BuildV1Tx for harmonic::HarmonicBlockEngine {}
 impl BuildV1Tx for jito::Jito {}
 impl BuildV1Tx for landx::LandX {}
 impl BuildV1Tx for nodeone::NodeOne {}
+impl BuildV1Tx for nodeone_quic::NodeOneQuic {}
 impl BuildV1Tx for temporal::Temporal {}
 impl BuildV1Tx for zeroslot::ZeroSlot {}
 impl BuildV1Tx for flash_block::FlashBlock {}
