@@ -23,6 +23,7 @@ pub mod blockrazor;
 pub mod ever_stake;
 pub mod ever_stake_quic;
 pub mod flash_block;
+pub mod flash_block_quic;
 pub mod harmonic;
 pub mod harmonic_proto;
 pub mod helius_max;
@@ -837,6 +838,7 @@ impl BuildV0Tx for nodeone_quic::NodeOneQuic {}
 impl BuildV0Tx for temporal::Temporal {}
 impl BuildV0Tx for zeroslot::ZeroSlot {}
 impl BuildV0Tx for flash_block::FlashBlock {}
+impl BuildV0Tx for flash_block_quic::FlashBlockQuic {}
 impl BuildV0Tx for nextblock::NextBlock {}
 impl BuildV0Tx for stellium::Stellium {}
 impl BuildV0Tx for ever_stake::EverStake {}
@@ -1122,6 +1124,7 @@ impl BuildV1Tx for nodeone_quic::NodeOneQuic {}
 impl BuildV1Tx for temporal::Temporal {}
 impl BuildV1Tx for zeroslot::ZeroSlot {}
 impl BuildV1Tx for flash_block::FlashBlock {}
+impl BuildV1Tx for flash_block_quic::FlashBlockQuic {}
 impl BuildV1Tx for nextblock::NextBlock {}
 impl BuildV1Tx for stellium::Stellium {}
 impl BuildV1Tx for ever_stake::EverStake {}

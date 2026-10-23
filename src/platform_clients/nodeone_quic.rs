@@ -22,19 +22,30 @@
 //!   `status == 200` 时 `msg` 是 JSON-RPC 结果；否则 `msg` 是错误信息。
 //! - **认证成功后复用同一条连接**，不要每笔都 connect + auth。
 //!
+//! # 断线重连
+//!
+//! 文档明确要求：出现 `TimedOut` / `LocallyClosed` / `ApplicationClosed` /
+//! `ConnectionLost(..)` 时要 reconnect + 重新 auth。长连接也一定会掉（idle timeout、
+//! 服务端重启、LB 掐连接），所以这里做「读锁取连接 + 失效才抢占重连锁」的
+//! double-check 单飞重连：
+//!
+//! - 正常发送只有一次读锁 + 一次 `close_reason()` 检查，**没有 I/O**；
+//! - 连接坏了只有一个 task 真正去重连，其余 task 等它完成后直接复用新连接。
+//!
 //! # 序列化
 //!
 //! 文档示例写的是 `bincode::serialize(&versioned_tx)`。在本仓库用的 SDK 版本下，
 //! **Legacy / V0 的 bincode 字节与 wire 字节完全相同**，但 **V1 不同**（bincode 会把
 //! 长度前缀写成 u64，产出的不是合法 wire，见 [`crate::platform_clients::serialize_transaction_wire`]
 //! 的注释和 `tests/tx_wire_format.rs`）。所以这里统一用
-//! [`serialize_transaction_wire`]：对 Legacy / V0 与文档要求等价，且额外兼容 V1。
+//! [`serialize_transaction_wire`]（wincode）：对 Legacy / V0 与文档要求等价，且额外
+//! 兼容 V1。
 
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use log::info;
+use log::{info, warn};
 use quinn::crypto::rustls::QuicClientConfig;
 use quinn::{Connection, Endpoint, TransportConfig};
 use rand::seq::IndexedRandom;
@@ -69,7 +80,7 @@ const MAX_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 /// 响应体长度上限：防御坏包/恶意包让我们按 u32 申请 4GB 内存。
 const MAX_RESPONSE_MSG_LEN: usize = 64 * 1024;
 
-/// 读取响应帧时最多等 8 字节（认证只回 1 字节，多读一点容错）。
+/// 读取认证响应时最多读 8 字节（服务端只回 1 字节，多读一点容错）。
 const AUTH_REPLY_BUF: usize = 8;
 
 /// 官方 8 个区域 QUIC 端点（`host:16666`）。
@@ -88,15 +99,24 @@ pub const NODEONE_QUIC_ENDPOINTS: &[&str] = &[
 
 /// 连接并完成一次认证后的 Node1 QUIC 客户端。
 ///
-/// `Clone` 只是 Arc/Connection 的引用计数克隆，**不会**新建连接或重新认证。
+/// `Clone` 只是 Arc 的引用计数克隆，**不会**新建连接或重新认证。
 #[derive(Clone)]
 pub struct NodeOneQuic {
-    /// 必须持有 `Endpoint`，drop 掉连接会一起失效。
-    _endpoint: Arc<Endpoint>,
-    /// 已认证的长连接，后续所有交易复用。
-    connection: Connection,
+    inner: Arc<Inner>,
+}
+
+struct Inner {
+    /// 必须持有 `Endpoint`：drop 掉连接会一起失效，重连也要用它。
+    endpoint: Endpoint,
+    /// 当前已认证长连接。读多写极少 → `RwLock`，正常发送只取一次读锁。
+    connection: RwLock<Connection>,
+    /// 重连单飞锁：连接坏掉时只让一个 task 去重连 + 重认证。
+    reconnect: tokio::sync::Mutex<()>,
     /// 仅用于日志/测试。
     endpoint_addr: &'static str,
+    server_name: &'static str,
+    /// 重连要重新认证，缓存解析好的 16 字节（不保存/不重复解析字符串）。
+    api_key_uuid: [u8; 16],
 }
 
 impl NodeOneQuic {
@@ -140,33 +160,39 @@ impl NodeOneQuic {
         Self::init_with(api_key, *REGION).await
     }
 
-    /// 显式构造：连接 + 认证一次，之后复用这条连接。
+    /// 显式构造：连接 + 认证一次，之后复用这条连接（断了会自动重连 + 重认证）。
     pub async fn init_with(api_key: impl Into<String>, region: Region) -> Result<Self, String> {
         let api_key = api_key.into();
         let endpoint_addr = Self::endpoint_for(region);
         let server_name = Self::server_name_of(endpoint_addr);
 
-        // 先校验 key 格式：格式错就别浪费一次 TCP/QUIC 握手。
-        let _ = parse_api_key_uuid(&api_key)?;
+        // 先校验 key 格式：格式错就别浪费一次 QUIC 握手。
+        let api_key_uuid = parse_api_key_uuid(&api_key)?;
 
         let (endpoint, connection) = tokio::time::timeout(CONNECT_TIMEOUT, Self::connect(endpoint_addr, server_name))
             .await
             .map_err(|_| format!("connect timeout after {CONNECT_TIMEOUT:?} ({endpoint_addr})"))??;
 
-        tokio::time::timeout(AUTH_TIMEOUT, Self::authenticate(&connection, &api_key))
+        tokio::time::timeout(AUTH_TIMEOUT, Self::authenticate(&connection, &api_key_uuid))
             .await
             .map_err(|_| format!("auth timeout after {AUTH_TIMEOUT:?} ({endpoint_addr})"))??;
 
         info!("[NodeOneQuic] 已连接并认证 {endpoint_addr}");
 
         Ok(Self {
-            _endpoint: Arc::new(endpoint),
-            connection,
-            endpoint_addr,
+            inner: Arc::new(Inner {
+                endpoint,
+                connection: RwLock::new(connection),
+                reconnect: tokio::sync::Mutex::new(()),
+                endpoint_addr,
+                server_name,
+                api_key_uuid,
+            }),
         })
     }
 
-    /// 建一条 QUIC 连接（不做认证）。
+    /// 建一条 QUIC 连接（不做认证）。同时把 client config 设为 endpoint 默认值，
+    /// 后续 `ensure_connected` 的重连直接复用它。
     async fn connect(endpoint_addr: &str, server_name: &str) -> Result<(Endpoint, Connection), String> {
         let mut crypto = rustls::ClientConfig::builder()
             .dangerous()
@@ -196,6 +222,12 @@ impl NodeOneQuic {
             Endpoint::client("0.0.0.0:0".parse().map_err(|_| "parse bind addr 0.0.0.0:0")?).map_err(|e| e.to_string())?;
         endpoint.set_default_client_config(client_config);
 
+        let connection = Self::handshake(&endpoint, endpoint_addr, server_name).await?;
+        Ok((endpoint, connection))
+    }
+
+    /// 在已有 endpoint 上握手（首次连接和重连共用）。
+    async fn handshake(endpoint: &Endpoint, endpoint_addr: &str, server_name: &str) -> Result<Connection, String> {
         // 端点写的是域名 → 用 tokio 的异步解析，别在热路径上阻塞 runtime。
         let addr = tokio::net::lookup_host(endpoint_addr)
             .await
@@ -203,25 +235,21 @@ impl NodeOneQuic {
             .next()
             .ok_or_else(|| format!("resolve {endpoint_addr}: no address"))?;
 
-        let connection = endpoint
+        endpoint
             .connect(addr, server_name)
             .map_err(|e| format!("start handshake: {e}"))?
             .await
-            .map_err(|e| format!("finish handshake: {e}"))?;
-
-        Ok((endpoint, connection))
+            .map_err(|e| format!("finish handshake: {e}"))
     }
 
     /// 第一个双向 stream 上发 16 字节 UUID 完成认证。
-    async fn authenticate(connection: &Connection, api_key: &str) -> Result<(), String> {
-        let uuid_bytes = parse_api_key_uuid(api_key)?;
-
+    async fn authenticate(connection: &Connection, api_key_uuid: &[u8; 16]) -> Result<(), String> {
         let (mut send, mut recv) = connection
             .open_bi()
             .await
             .map_err(|e| format!("auth open_bi: {e}"))?;
 
-        send.write_all(&uuid_bytes)
+        send.write_all(api_key_uuid)
             .await
             .map_err(|e| format!("auth write: {e}"))?;
         send.finish().map_err(|e| format!("auth finish: {e}"))?;
@@ -242,40 +270,136 @@ impl NodeOneQuic {
         }
     }
 
+    /// 取当前可用连接；已断开则（单飞地）重连 + 重新认证。
+    ///
+    /// 热路径只有一次读锁 + 一次 `close_reason()` 检查，没有 I/O。
+    async fn ensure_connected(&self) -> Result<Connection, String> {
+        let current = self.load_connection();
+        if current.close_reason().is_none() {
+            return Ok(current);
+        }
+
+        let _guard = self.inner.reconnect.lock().await;
+        // 拿锁后复查：可能已被别的 task 重连好了。
+        let current = self.load_connection();
+        if current.close_reason().is_none() {
+            return Ok(current);
+        }
+
+        self.reconnect_now().await
+    }
+
+    fn load_connection(&self) -> Connection {
+        self.inner
+            .connection
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    /// 真正重连：握手 + 认证 + 写回。调用方需持有重连锁。
+    async fn reconnect_now(&self) -> Result<Connection, String> {
+        warn!(
+            "[NodeOneQuic] 连接已断开({})，重连 {}",
+            self.close_reason().unwrap_or_else(|| "unknown".into()),
+            self.inner.endpoint_addr
+        );
+
+        let connection = tokio::time::timeout(
+            CONNECT_TIMEOUT,
+            Self::handshake(&self.inner.endpoint, self.inner.endpoint_addr, self.inner.server_name),
+        )
+        .await
+        .map_err(|_| format!("reconnect timeout after {CONNECT_TIMEOUT:?}"))??;
+
+        tokio::time::timeout(AUTH_TIMEOUT, Self::authenticate(&connection, &self.inner.api_key_uuid))
+            .await
+            .map_err(|_| format!("re-auth timeout after {AUTH_TIMEOUT:?}"))??;
+
+        *self.inner.connection.write().unwrap_or_else(|e| e.into_inner()) = connection.clone();
+        info!("[NodeOneQuic] 重连并重新认证成功 {}", self.inner.endpoint_addr);
+        Ok(connection)
+    }
+
     /// 发一笔原始交易字节，返回服务端 `msg`（成功时是 JSON-RPC 结果）。
+    ///
+    /// 连接级失败（连接已断 / `open_bi` / `write` / `finish` 报错）会重连后重试**一次**；
+    /// 已经 `finish()` 完再读响应失败的情况**不重试** —— 那种状态下无法确定服务端
+    /// 是否已受理，宁可直接报错交给上层决策。
     pub async fn send_raw_transaction(&self, raw: &[u8]) -> Result<String, String> {
+        let connection = self.ensure_connected().await?;
+
+        match self.try_send(&connection, raw).await {
+            Ok(msg) => Ok(msg),
+            Err(SendErr { msg, retryable }) if retryable => {
+                warn!("[NodeOneQuic] 发送失败({msg})，重连后重试一次");
+                let connection = self.reconnect_now().await?;
+                self.try_send(&connection, raw)
+                    .await
+                    .map_err(|e| format!("{}（重试后）", e.msg))
+            }
+            Err(e) => Err(e.msg),
+        }
+    }
+
+    /// 单次发送：open_bi → write → finish → 读响应帧。
+    async fn try_send(&self, connection: &Connection, raw: &[u8]) -> Result<String, SendErr> {
         let fut = async {
-            let (mut send, mut recv) = self
-                .connection
+            let (mut send, mut recv) = connection
                 .open_bi()
                 .await
-                .map_err(|e| format!("open_bi: {e}（连接不可用，需要重连+重新认证）"))?;
+                .map_err(|e| SendErr::retryable(format!("open_bi: {e}")))?;
 
-            send.write_all(raw).await.map_err(|e| format!("write: {e}"))?;
+            send.write_all(raw)
+                .await
+                .map_err(|e| SendErr::retryable(format!("write: {e}")))?;
             // 必须 finish：服务端靠 stream EOF 判断一笔请求结束。
-            send.finish().map_err(|e| format!("finish: {e}"))?;
+            send.finish().map_err(|e| SendErr::retryable(format!("finish: {e}")))?;
 
-            read_response(&mut recv).await
+            // 到这里服务端可能已经受理，之后失败一律不重试。
+            read_response(&mut recv).await.map_err(SendErr::fatal)
         };
 
         let (status, msg) = tokio::time::timeout(SEND_TIMEOUT, fut)
             .await
-            .map_err(|_| format!("send timeout after {SEND_TIMEOUT:?}"))??;
+            .map_err(|_| SendErr::fatal(format!("send timeout after {SEND_TIMEOUT:?}")))??;
 
         if status == STATUS_OK {
             Ok(msg)
         } else {
-            Err(format!("status={status} msg={msg}"))
+            // 非 200 是业务错误（tip 不足 / 重复 / 格式错…），重试没意义。
+            Err(SendErr::fatal(format!("status={status} msg={msg}")))
         }
     }
 
-    /// 连接是否已经不可用（主动检查用；发送时的错误也要处理）。
+    /// 连接是否已经不可用（用于观测/告警；发送路径内部会自行处理重连）。
     pub fn close_reason(&self) -> Option<String> {
-        self.connection.close_reason().map(|r| format!("{r:?}"))
+        self.load_connection().close_reason().map(|r| format!("{r:?}"))
     }
 
     pub fn endpoint_addr(&self) -> &'static str {
-        self.endpoint_addr
+        self.inner.endpoint_addr
+    }
+}
+
+/// 单次发送的错误；`retryable` 表示「重连后重试是安全的」。
+struct SendErr {
+    msg: String,
+    retryable: bool,
+}
+
+impl SendErr {
+    fn retryable(msg: impl Into<String>) -> Self {
+        Self {
+            msg: msg.into(),
+            retryable: true,
+        }
+    }
+    fn fatal(msg: impl Into<String>) -> Self {
+        Self {
+            msg: msg.into(),
+            retryable: false,
+        }
     }
 }
 
@@ -338,7 +462,7 @@ fn hex_to_nibble(b: u8) -> Option<u8> {
 
 impl fmt::Display for NodeOneQuic {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "NodeOneQuic({})", self.endpoint_addr)
+        write!(f, "NodeOneQuic({})", self.inner.endpoint_addr)
     }
 }
 
@@ -350,7 +474,7 @@ impl SendTx for NodeOneQuic {
             let bytes = serialize_transaction_wire(tx)?;
             match self.send_raw_transaction(&bytes).await {
                 Ok(msg) => {
-                    info!("[NodeOneQuic] {} 上链请求已受理: {}", self.endpoint_addr, msg);
+                    info!("[NodeOneQuic] {} 上链请求已受理: {}", self.inner.endpoint_addr, msg);
                     Ok(())
                 }
                 Err(e) => Err(format!("NodeOneQuic send error: {e}")),
@@ -399,6 +523,7 @@ mod tests {
             let host = NodeOneQuic::server_name_of(ep);
             assert!(!host.contains(':'), "{ep}");
             assert!(host.ends_with(".node1.me"), "{ep}");
+            assert_eq!(NodeOneQuic::server_name_of(host), host, "裸域名应原样返回");
         }
     }
 
@@ -459,8 +584,7 @@ mod tests {
         assert!(parse_api_key_uuid("550e8400-e29b-41d4-a716-44665544zzzz").is_err());
     }
 
-    /// 响应帧解析：6 字节头 + msg。用真实 quinn stream 不便构造，这里只覆盖
-    /// 头部的字节序假设（大端），防止有人改成小端。
+    /// 响应帧解析的字节序假设（大端），防止有人改成小端。
     #[test]
     fn response_header_is_big_endian() {
         let status: u16 = 200;
@@ -473,5 +597,16 @@ mod tests {
         assert_eq!(&frame[0..2], &[0x00, 0xC8], "status 必须大端 2 字节");
         assert_eq!(&frame[2..6], &[0x00, 0x00, 0x00, 0x05], "msg_len 必须大端 4 字节");
         assert_eq!(frame.len(), 6 + 5);
+    }
+
+    /// 重试语义：只有「还没写完这笔」的失败才可重试。
+    #[test]
+    fn retryable_flags_are_right() {
+        assert!(SendErr::retryable("open_bi").retryable);
+        assert!(SendErr::retryable("write").retryable);
+        assert!(SendErr::retryable("finish").retryable);
+        // 读到响应之后的状态一律不重试（服务端可能已受理）
+        assert!(!SendErr::fatal("status=409").retryable);
+        assert!(!SendErr::fatal("send timeout").retryable);
     }
 }

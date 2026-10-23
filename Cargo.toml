@@ -31,6 +31,9 @@ solana-system-interface = "3.0.0"
 utils = { git = "https://github.com/miaomiaowu0428/sol-utils.git", branch = "main" }
 const-accounts = { git = "https://github.com/miaomiaowu0428/const-accounts.git", branch = "main" }
 rustls = "0.23.37"
+# FlashBlock QUIC 要**真校验**公网证书（官方示例用 webpki-roots：编译期内嵌根证书，
+# 不依赖宿主机证书文件。Cargo.lock 里已有 1.0.9，由 tonic 的 tls-webpki-roots 带入）。
+webpki-roots = "1.0.9"
 solana-tls-utils = "3.1.11"
 anyhow = "1.0.102"
 quinn = "0.11.9"
