@@ -30,6 +30,7 @@ pub mod helius_max;
 pub mod helius_swqos;
 pub mod jito;
 pub mod landx;
+pub mod landx_udp;
 pub mod nextblock;
 pub mod nodeone;
 pub mod nodeone_quic;
@@ -833,6 +834,7 @@ impl BuildV0Tx for helius_swqos::HeliusSwqos {}
 impl BuildV0Tx for harmonic::HarmonicBlockEngine {}
 impl BuildV0Tx for jito::Jito {}
 impl BuildV0Tx for landx::LandX {}
+impl BuildV0Tx for landx_udp::LandXUdp {}
 impl BuildV0Tx for nodeone::NodeOne {}
 impl BuildV0Tx for nodeone_quic::NodeOneQuic {}
 impl BuildV0Tx for temporal::Temporal {}
@@ -1119,6 +1121,7 @@ impl BuildV1Tx for helius_swqos::HeliusSwqos {}
 impl BuildV1Tx for harmonic::HarmonicBlockEngine {}
 impl BuildV1Tx for jito::Jito {}
 impl BuildV1Tx for landx::LandX {}
+impl BuildV1Tx for landx_udp::LandXUdp {}
 impl BuildV1Tx for nodeone::NodeOne {}
 impl BuildV1Tx for nodeone_quic::NodeOneQuic {}
 impl BuildV1Tx for temporal::Temporal {}

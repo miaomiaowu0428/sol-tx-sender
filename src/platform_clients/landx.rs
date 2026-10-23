@@ -2,7 +2,7 @@
 //!
 //! 官方文档要点（详见 `docs/landx.md`）：
 //!
-//! - Base URL 同时支持 HTTP / UDP；**本实现只用 HTTP**。HTTP 下 API key 必须
+//! - Base URL 同时支持 HTTP / UDP；**HTTP 走本文件，UDP 走 `landx_udp.rs`**。HTTP 下 API key 必须
 //!   放在 **path** 里（`http://<host>/<api_key>`），不支持 query-string / header 鉴权。
 //! - 每笔交易必须包含一笔打给指定 tip 地址的 **SystemProgram transfer**。
 //! - 默认最低 tip：**0.001 SOL = 1,000,000 lamports**。
@@ -27,7 +27,8 @@
 //!
 //! ⚠️ `fra2` / `fra3` / `slc1` / `dub1` **只有 UDP**，不走 HTTP，因此
 //! [`LandX::endpoint_for_region`] 会给这些区域回退到最近的 HTTP 可用机房
-//! （Frankfurt2→fra1、SaltLakeCity→ny1、Dublin→lon1）。将来要接 UDP 再单独加。
+//! （Frankfurt2→fra1、SaltLakeCity→ny1、Dublin→lon1）。要打这四个机房请用
+//! [`crate::platform_clients::landx_udp::LandXUdp`]（它按区域直连 fra2/slc1/dub1）。
 //!
 //! # 鉴权 key
 //!
@@ -82,7 +83,7 @@ pub const LANDX_HTTP_HOSTS: &[&str] = &[
     "http://sgp1.landx.dev", // Singapore (TeraSwitch)
 ];
 
-/// 仅 UDP、无法走 HTTP 的 host（保留常量便于将来接 UDP / 做映射校验）。
+/// 仅 UDP、无法走 HTTP 的 host（由 `landx_udp::LandXUdp` 使用）。
 pub const LANDX_UDP_ONLY_HOSTS: &[&str] = &["fra2.landx.dev", "fra3.landx.dev", "slc1.landx.dev", "dub1.landx.dev"];
 
 /// LandX HTTP 交易发送客户端。
