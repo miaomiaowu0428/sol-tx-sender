@@ -1081,11 +1081,29 @@ pub trait BuildV1Tx {
                 V1Message::try_compile_with_config(&payer, &instructions, hash, config.to_transaction_config())?;
             let compile_us = t_compile.elapsed().as_secs_f64() * 1e6;
 
+            let message = VersionedMessage::V1(message);
+
+            let t_ser = std::time::Instant::now();
+            let message_bytes = message.serialize();
+            let serialize_us = t_ser.elapsed().as_secs_f64() * 1e6;
+            let msg_len = message_bytes.len();
+
             let t_sign = std::time::Instant::now();
-            let transaction =
-                VersionedTransaction::try_new(VersionedMessage::V1(message), &[signer.as_ref()])?;
+            // 单签路径：与 VersionedTransaction::try_new 等价，但把
+            // message.serialize() 和真正的 Ed25519 sign 分开计时。
+            if message.header().num_required_signatures != 1 {
+                return Err("build_v1_tx expects exactly one required signature".into());
+            }
+            if message.static_account_keys().first() != Some(&payer) {
+                return Err("build_v1_tx signer is not the fee payer".into());
+            }
+            let signature = signer.sign_message(&message_bytes);
+            let transaction = VersionedTransaction {
+                signatures: vec![signature],
+                message,
+            };
             let sign_us = t_sign.elapsed().as_secs_f64() * 1e6;
-            let sig = transaction.signatures[0];
+            let sig = signature;
             // ⚠️ tip / gas / sig **打印在同一行**，方便 `rg` 一次性捞出三者。
             //
             // - `tip`：实际写入的 SOL 转账额（lamports）；平台 `uses_tip_transfer()=false`
@@ -1095,11 +1113,10 @@ pub trait BuildV1Tx {
             log_v1_build(self, ixs, tip, config, sig);
             let log_us = t_log.elapsed().as_secs_f64() * 1e6;
 
-            // 诊断用：total 不含最后的 msg_len 序列化和这条 timing 日志本身。
+            // 诊断用：total 不含这条 timing 日志本身。
             let total_us = t_all.elapsed().as_secs_f64() * 1e6;
-            let msg_len = transaction.message.serialize().len();
             info!(
-                "[v1-timing] ix={ix_us:.2}us compile={compile_us:.2}us sign={sign_us:.2}us log={log_us:.2}us total={total_us:.2}us msg_len={msg_len}"
+                "[v1-timing] ix={ix_us:.2}us compile={compile_us:.2}us serialize={serialize_us:.2}us sign={sign_us:.2}us log={log_us:.2}us total={total_us:.2}us msg_len={msg_len}"
             );
             Ok(TxEnvelope {
                 tx: DetailedTx {
@@ -1323,6 +1340,7 @@ fn test_build_v1_tx_uses_config_not_compute_budget_ix() {
     use solana_sdk::instruction::Instruction;
     use solana_sdk::pubkey::Pubkey;
     use solana_sdk::signature::Keypair;
+    use solana_sdk::signer::Signer;
 
     let sender = EverStake::new();
     let signer = std::sync::Arc::new(Keypair::new());
@@ -1372,8 +1390,10 @@ fn test_build_v1_tx_uses_config_not_compute_budget_ix() {
     assert_eq!(envelope.tx.cu_limit, Some(200_000));
     assert_eq!(envelope.tx.cu_price, Some(5_000));
 
-    // 5. 签名存在
+    // 5. 签名存在，且与"先 serialize 再 sign"的确定性结果一致
     assert_eq!(envelope.tx.tx.signatures.len(), 1);
+    let expected = signer.sign_message(&envelope.tx.tx.message.serialize());
+    assert_eq!(envelope.tx.tx.signatures[0], expected);
 }
 
 /// 验证 V1 能装下超过 1232 字节的交易（V0 会失败）。
