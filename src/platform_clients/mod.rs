@@ -1074,18 +1074,18 @@ pub trait BuildV1Tx {
 
             // 用户指令
             instructions.extend(ixs.iter().cloned());
-            let ix_us = t_ix.elapsed().as_secs_f64() * 1e6;
+            let ix_dur = t_ix.elapsed();
 
             let t_compile = std::time::Instant::now();
             let message =
                 V1Message::try_compile_with_config(&payer, &instructions, hash, config.to_transaction_config())?;
-            let compile_us = t_compile.elapsed().as_secs_f64() * 1e6;
+            let compile_dur = t_compile.elapsed();
 
             let message = VersionedMessage::V1(message);
 
             let t_ser = std::time::Instant::now();
             let message_bytes = message.serialize();
-            let serialize_us = t_ser.elapsed().as_secs_f64() * 1e6;
+            let serialize_dur = t_ser.elapsed();
             let msg_len = message_bytes.len();
 
             let t_sign = std::time::Instant::now();
@@ -1102,7 +1102,7 @@ pub trait BuildV1Tx {
                 signatures: vec![signature],
                 message,
             };
-            let sign_us = t_sign.elapsed().as_secs_f64() * 1e6;
+            let sign_dur = t_sign.elapsed();
             let sig = signature;
             // ⚠️ tip / gas / sig **打印在同一行**，方便 `rg` 一次性捞出三者。
             //
@@ -1111,12 +1111,12 @@ pub trait BuildV1Tx {
             // - `gas`：V1 的 `priority_fee`（**lamports 总额**，不是 micro-lamports/CU 单价）。
             let t_log = std::time::Instant::now();
             log_v1_build(self, ixs, tip, config, sig);
-            let log_us = t_log.elapsed().as_secs_f64() * 1e6;
+            let log_dur = t_log.elapsed();
 
             // 诊断用：total 不含这条 timing 日志本身。
-            let total_us = t_all.elapsed().as_secs_f64() * 1e6;
+            let total_dur = t_all.elapsed();
             info!(
-                "[v1-timing] ix={ix_us:.2}us compile={compile_us:.2}us serialize={serialize_us:.2}us sign={sign_us:.2}us log={log_us:.2}us total={total_us:.2}us msg_len={msg_len}"
+                "[v1-timing] ix={ix_dur:?} compile={compile_dur:?} serialize={serialize_dur:?} sign={sign_dur:?} log={log_dur:?} total={total_dur:?} msg_len={msg_len}"
             );
             Ok(TxEnvelope {
                 tx: DetailedTx {
