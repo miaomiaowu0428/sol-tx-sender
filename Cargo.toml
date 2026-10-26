@@ -1,0 +1,15 @@
+[package]
+name = "ed25519-bench"
+version = "0.1.0"
+edition = "2021"
+description = "Portable Ed25519 sign/verify benchmark for Solana transaction signing"
+
+[workspace]
+
+[dependencies]
+# 与 solana-sdk 4.0 使用的 solana-keypair 一致（内部就是 ed25519-dalek 2.2）
+solana-keypair = "3.1.2"
+ed25519-dalek = { version = "2.2.0", features = ["batch"] }
+# 用于对比 3.0；默认 features 已含 fast
+ed25519-dalek-v3 = { package = "ed25519-dalek", version = "3.0.0" }
+ring = "0.17.14"
