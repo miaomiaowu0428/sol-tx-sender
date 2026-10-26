@@ -1034,8 +1034,10 @@ pub trait BuildV1Tx {
         use solana_sdk::message::v1::Message as V1Message;
         use solana_sdk::message::VersionedMessage;
         log_time!("build V1 transaction", {
+            let t_all = std::time::Instant::now();
             let hash = *nonce.hash();
             let payer = signer.pubkey();
+            let t_ix = std::time::Instant::now();
             let mut instructions = Vec::new();
 
             // nonce advance 仍是普通指令（V1 只把 compute budget 搬进了 config）。
@@ -1072,18 +1074,33 @@ pub trait BuildV1Tx {
 
             // 用户指令
             instructions.extend(ixs.iter().cloned());
+            let ix_us = t_ix.elapsed().as_secs_f64() * 1e6;
 
+            let t_compile = std::time::Instant::now();
             let message =
                 V1Message::try_compile_with_config(&payer, &instructions, hash, config.to_transaction_config())?;
+            let compile_us = t_compile.elapsed().as_secs_f64() * 1e6;
+
+            let t_sign = std::time::Instant::now();
             let transaction =
                 VersionedTransaction::try_new(VersionedMessage::V1(message), &[signer.as_ref()])?;
+            let sign_us = t_sign.elapsed().as_secs_f64() * 1e6;
             let sig = transaction.signatures[0];
             // ⚠️ tip / gas / sig **打印在同一行**，方便 `rg` 一次性捞出三者。
             //
             // - `tip`：实际写入的 SOL 转账额（lamports）；平台 `uses_tip_transfer()=false`
             //   或未达下限时为 **0**（表示没有 tip 指令）。
             // - `gas`：V1 的 `priority_fee`（**lamports 总额**，不是 micro-lamports/CU 单价）。
+            let t_log = std::time::Instant::now();
             log_v1_build(self, ixs, tip, config, sig);
+            let log_us = t_log.elapsed().as_secs_f64() * 1e6;
+
+            // 诊断用：total 不含最后的 msg_len 序列化和这条 timing 日志本身。
+            let total_us = t_all.elapsed().as_secs_f64() * 1e6;
+            let msg_len = transaction.message.serialize().len();
+            info!(
+                "[v1-timing] ix={ix_us:.2}us compile={compile_us:.2}us sign={sign_us:.2}us log={log_us:.2}us total={total_us:.2}us msg_len={msg_len}"
+            );
             Ok(TxEnvelope {
                 tx: DetailedTx {
                     tx: transaction,
