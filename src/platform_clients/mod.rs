@@ -485,7 +485,7 @@ pub fn keep_alive_targets() -> Vec<KeepAliveTarget> {
         KeepAliveTarget::new("Syncro", syncro::Syncro::get_endpoint()),
     ]);
     // 同一 origin 只探测一次（Helius Max / SWQOS 就是同一组 origin）。
-    let mut seen = std::collections::HashSet::new();
+    let mut seen = hashbrown::HashSet::new();
     raw.into_iter()
         .filter(|t| !t.url.trim().is_empty())
         .filter(|t| seen.insert(t.url.clone()))
